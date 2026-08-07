@@ -13,4 +13,10 @@ public interface ITokenService
     IssuedRefreshToken CreateRefreshToken(Guid familyId);
 
     string HashRefreshToken(string rawToken);
+
+    /// <summary>Creates a short-lived, limited-scope token that only authorizes the 2FA step.</summary>
+    string CreateChallengeToken(User user);
+
+    /// <summary>Validates a 2FA challenge token; returns the user id if valid, else null.</summary>
+    Task<Guid?> ValidateChallengeTokenAsync(string challengeToken);
 }

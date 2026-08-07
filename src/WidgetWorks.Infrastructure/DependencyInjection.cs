@@ -12,7 +12,7 @@ namespace WidgetWorks.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit, 2FA, catalog.</summary>
+    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit, 2FA, catalog, cart.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Dapper maps snake_case columns to PascalCase properties.
@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<ITwoFactorRepository, TwoFactorRepository>();
         services.AddScoped<IWidgetRepository, WidgetRepository>();
+        services.AddScoped<ICartRepository, CartRepository>();
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddSingleton<ITotpService, TotpService>();
         services.AddSingleton<IRecoveryCodes, RecoveryCodeService>();

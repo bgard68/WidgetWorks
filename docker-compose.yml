@@ -1,5 +1,6 @@
 # One-command run: `docker compose up`
-# No secret literals live here — POSTGRES_PASSWORD must come from .env (see .env.example).
+# No secret literals live here — POSTGRES_PASSWORD and Jwt__SigningKey must come from .env
+# (see .env.example). Demo seed passwords default to the documented throwaway values.
 services:
   db:
     image: postgres:16-alpine
@@ -28,6 +29,9 @@ services:
       Postgres__Database: ${POSTGRES_DB:-widgetworks}
       Postgres__Username: ${POSTGRES_USER:-widgetworks}
       Postgres__Password: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey in .env}
+      Seed__DemoAdminPassword: ${Seed__DemoAdminPassword:-DemoAdmin!Change01}
+      Seed__DemoCustomerPassword: ${Seed__DemoCustomerPassword:-DemoUser!Change01}
     ports:
       - "8080:8080"
     depends_on:

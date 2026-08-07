@@ -85,6 +85,8 @@ regexes = [
   '''pk_test_[0-9a-zA-Z]{10,}''',
   '''sk_test_00000000000000EXAMPLE''',
   '''your-google-client-id\.apps\.googleusercontent\.com''',
+  # Throwaway HMAC key used only in unit tests (JwtTokenServiceTests) — not a secret.
+  '''(?i)test-signing-key[a-z0-9\-]*''',
 ]
 
 stopwords = [

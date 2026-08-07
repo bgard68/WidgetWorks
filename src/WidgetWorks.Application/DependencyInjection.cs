@@ -3,6 +3,11 @@ using WidgetWorks.Application.Auth.Login;
 using WidgetWorks.Application.Auth.Logout;
 using WidgetWorks.Application.Auth.Refresh;
 using WidgetWorks.Application.Auth.Register;
+using WidgetWorks.Application.Carts.AddItem;
+using WidgetWorks.Application.Carts.GetCart;
+using WidgetWorks.Application.Carts.Merge;
+using WidgetWorks.Application.Carts.RemoveItem;
+using WidgetWorks.Application.Carts.UpdateItem;
 using WidgetWorks.Application.Catalog.Browse;
 using WidgetWorks.Application.Catalog.Create;
 using WidgetWorks.Application.Catalog.Detail;
@@ -37,6 +42,11 @@ public static class DependencyInjection
         services.AddScoped<CreateWidgetHandler>();
         services.AddScoped<UpdateWidgetHandler>();
         services.AddScoped<AdjustInventoryHandler>();
+        services.AddScoped<GetCartHandler>();
+        services.AddScoped<AddCartItemHandler>();
+        services.AddScoped<UpdateCartItemHandler>();
+        services.AddScoped<RemoveCartItemHandler>();
+        services.AddScoped<MergeCartHandler>();
         return services;
     }
 }

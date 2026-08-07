@@ -1,5 +1,6 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Auth;
+using WidgetWorks.Domain.Carts;
 using WidgetWorks.Domain.Catalog;
 using WidgetWorks.Domain.Users;
 
@@ -83,6 +84,69 @@ public sealed class InMemoryWidgetRepository : IWidgetRepository
 
         return q;
     }
+}
+
+public sealed class InMemoryCartRepository : ICartRepository
+{
+    public readonly Dictionary<Guid, Cart> Store = new();
+
+    public Task<Cart?> GetAsync(Guid cartId, CancellationToken ct)
+        => Task.FromResult(Store.TryGetValue(cartId, out var c) ? Clone(c) : null);
+
+    public Task<Cart?> GetByUserAsync(Guid userId, CancellationToken ct)
+        => Task.FromResult(Store.Values.Where(c => c.UserId == userId).Select(Clone).FirstOrDefault());
+
+    public Task<Cart> CreateAsync(Guid? userId, CancellationToken ct)
+    {
+        var cart = new Cart { Id = Guid.NewGuid(), UserId = userId };
+        Store[cart.Id] = cart;
+        return Task.FromResult(Clone(cart));
+    }
+
+    public Task UpsertItemAsync(Guid cartId, Guid widgetId, int quantity, DateTimeOffset now, CancellationToken ct)
+    {
+        var cart = Store[cartId];
+        var item = cart.Items.FirstOrDefault(i => i.WidgetId == widgetId);
+        if (item is null)
+        {
+            cart.Items.Add(new CartItem { Id = Guid.NewGuid(), CartId = cartId, WidgetId = widgetId, Quantity = quantity, AddedAt = now });
+        }
+        else
+        {
+            item.Quantity = quantity;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveItemAsync(Guid cartId, Guid widgetId, CancellationToken ct)
+    {
+        if (Store.TryGetValue(cartId, out var cart))
+        {
+            cart.Items.RemoveAll(i => i.WidgetId == widgetId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(Guid cartId, CancellationToken ct)
+    {
+        Store.Remove(cartId);
+        return Task.CompletedTask;
+    }
+
+    public Task TouchAsync(Guid cartId, DateTimeOffset now, CancellationToken ct) => Task.CompletedTask;
+
+    private static Cart Clone(Cart c) => new()
+    {
+        Id = c.Id,
+        UserId = c.UserId,
+        CreatedAt = c.CreatedAt,
+        UpdatedAt = c.UpdatedAt,
+        Items = c.Items
+            .Select(i => new CartItem { Id = i.Id, CartId = i.CartId, WidgetId = i.WidgetId, Quantity = i.Quantity, AddedAt = i.AddedAt })
+            .ToList(),
+    };
 }
 
 public sealed class InMemoryRefreshTokenRepository : IRefreshTokenRepository

@@ -1,5 +1,6 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Auth;
+using WidgetWorks.Domain.Catalog;
 using WidgetWorks.Domain.Users;
 
 namespace WidgetWorks.UnitTests.Fakes;
@@ -28,6 +29,60 @@ public sealed class InMemoryUserRepository : IUserRepository
 
     public Task<Guid?> GetSecurityStampAsync(Guid userId, CancellationToken ct)
         => Task.FromResult(Store.TryGetValue(userId, out var u) ? (Guid?)u.SecurityStamp : null);
+}
+
+public sealed class InMemoryWidgetRepository : IWidgetRepository
+{
+    public readonly Dictionary<Guid, Widget> Store = new();
+
+    public Task<Widget?> GetByIdAsync(Guid id, CancellationToken ct)
+        => Task.FromResult(Store.TryGetValue(id, out var w) ? w : null);
+
+    public Task<Widget?> GetBySkuAsync(string normalizedSku, CancellationToken ct)
+        => Task.FromResult(Store.Values.FirstOrDefault(w => w.Sku == normalizedSku));
+
+    public Task<IReadOnlyList<Widget>> SearchAsync(WidgetQuery query, CancellationToken ct)
+    {
+        var items = Filter(query)
+            .OrderBy(w => w.Name, StringComparer.Ordinal)
+            .Skip(query.Offset)
+            .Take(query.PageSize)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<Widget>>(items);
+    }
+
+    public Task<int> CountAsync(WidgetQuery query, CancellationToken ct)
+        => Task.FromResult(Filter(query).Count());
+
+    public Task AddAsync(Widget widget, CancellationToken ct)
+    {
+        Store[widget.Id] = widget;
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateAsync(Widget widget, CancellationToken ct)
+    {
+        Store[widget.Id] = widget;
+        return Task.CompletedTask;
+    }
+
+    private IEnumerable<Widget> Filter(WidgetQuery query)
+    {
+        IEnumerable<Widget> q = Store.Values;
+        if (query.ActiveOnly)
+        {
+            q = q.Where(w => w.IsActive);
+        }
+
+        if (query.Search is not null)
+        {
+            q = q.Where(w =>
+                w.Name.Contains(query.Search, StringComparison.OrdinalIgnoreCase) ||
+                w.Sku.Contains(query.Search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return q;
+    }
 }
 
 public sealed class InMemoryRefreshTokenRepository : IRefreshTokenRepository

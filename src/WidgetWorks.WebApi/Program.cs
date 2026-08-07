@@ -10,6 +10,7 @@ using WidgetWorks.Infrastructure.Migrations;
 using WidgetWorks.Infrastructure.Seeding;
 using WidgetWorks.WebApi.Auth;
 using WidgetWorks.WebApi.Security;
+using WidgetWorks.WebApi.TwoFactor;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -80,6 +81,7 @@ app.UseAuthorization();
 app.MapGet("/health", (TimeProvider clock) => Results.Ok(new { status = "ok", utcNow = clock.GetUtcNow() }));
 app.MapAuthEndpoints();
 app.MapSecurityEndpoints();
+app.MapTwoFactorEndpoints();
 
 app.Run();
 

@@ -13,6 +13,7 @@ using WidgetWorks.WebApi.Auth;
 using WidgetWorks.WebApi.Authorization;
 using WidgetWorks.WebApi.Carts;
 using WidgetWorks.WebApi.Catalog;
+using WidgetWorks.WebApi.Checkout;
 using WidgetWorks.WebApi.Security;
 using WidgetWorks.WebApi.TwoFactor;
 
@@ -94,6 +95,7 @@ app.MapSecurityEndpoints();
 app.MapTwoFactorEndpoints();
 app.MapCatalogEndpoints();
 app.MapCartEndpoints();
+app.MapCheckoutEndpoints();
 
 app.Run();
 

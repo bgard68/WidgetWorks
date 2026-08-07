@@ -1,0 +1,17 @@
+# CODEOWNERS — defines who is requested for review on matching paths.
+# Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Only GitHub accounts/teams can be code owners. This is a solo project:
+#   @bgard68           - repository owner and sole human maintainer
+# AI collaborators (Claude, GitHub Copilot) author commits/PRs but cannot be
+# listed as code owners; request Copilot review via branch ruleset settings.
+
+# Default owner for everything in the repo.
+*                       @bgard68
+
+# Security- and CI-critical paths (explicit for emphasis; same owner).
+/.github/               @bgard68
+/.github/workflows/     @bgard68
+/.gitleaks.toml         @bgard68
+/.pre-commit-config.yaml @bgard68
+/docs/architecture/     @bgard68

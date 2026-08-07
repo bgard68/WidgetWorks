@@ -11,6 +11,7 @@ using WidgetWorks.Infrastructure.Security;
 using WidgetWorks.Infrastructure.Seeding;
 using WidgetWorks.WebApi.Auth;
 using WidgetWorks.WebApi.Authorization;
+using WidgetWorks.WebApi.Carts;
 using WidgetWorks.WebApi.Catalog;
 using WidgetWorks.WebApi.Security;
 using WidgetWorks.WebApi.TwoFactor;
@@ -92,6 +93,7 @@ app.MapAuthEndpoints();
 app.MapSecurityEndpoints();
 app.MapTwoFactorEndpoints();
 app.MapCatalogEndpoints();
+app.MapCartEndpoints();
 
 app.Run();
 

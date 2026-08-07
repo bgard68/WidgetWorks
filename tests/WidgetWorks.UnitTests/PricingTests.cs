@@ -8,7 +8,7 @@ namespace WidgetWorks.UnitTests;
 
 public class PricingTests
 {
-    private readonly StateSalesTaxCalculator _tax = new();
+    private readonly StateSalesTaxCalculator _tax = new(new StaticStateTaxRateProvider());
     private readonly FlatRateShippingCalculator _shipping = new();
 
     [Fact]
@@ -30,6 +30,14 @@ public class PricingTests
     {
         Assert.Equal(0m, _tax.Calculate("ZZ", 100m).Amount);
         Assert.Equal(0m, _tax.Calculate(null, 100m).Amount);
+    }
+
+    [Fact]
+    public void Tax_rate_set_is_versioned_and_covers_states()
+    {
+        var provider = new StaticStateTaxRateProvider();
+        Assert.True(provider.Current.Rates.Count >= 51);
+        Assert.False(string.IsNullOrWhiteSpace(provider.Current.Source));
     }
 
     [Fact]

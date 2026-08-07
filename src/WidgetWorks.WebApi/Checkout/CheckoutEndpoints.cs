@@ -11,6 +11,14 @@ public static class CheckoutEndpoints
 
         group.MapGet("/shipping-methods", (IShippingCalculator shipping) => Results.Ok(shipping.AvailableMethods));
 
+        // Transparency: shows which rate set is in effect and where it comes from.
+        group.MapGet("/tax-info", (ITaxRateProvider rates) => Results.Ok(new
+        {
+            effectiveOn = rates.Current.EffectiveOn,
+            source = rates.Current.Source,
+            stateCount = rates.Current.Rates.Count,
+        }));
+
         // Anonymous: guests and registered users can preview totals before placing an order.
         group.MapPost("/quote", async (QuoteRequest body, QuoteCartHandler handler, CancellationToken ct) =>
         {

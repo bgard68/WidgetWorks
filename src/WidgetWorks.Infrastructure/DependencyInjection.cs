@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddSingleton<ITotpService, TotpService>();
         services.AddSingleton<IRecoveryCodes, RecoveryCodeService>();
         services.AddSingleton<IShippingCalculator, FlatRateShippingCalculator>();
+        services.AddSingleton<ITaxRateProvider, StaticStateTaxRateProvider>();
         services.AddSingleton<ITaxCalculator, StateSalesTaxCalculator>();
         services.AddScoped<ITokenService, JwtTokenService>();
         services.AddScoped<DbSeeder>();

@@ -79,9 +79,9 @@ public class PricingTests
         Assert.True(result.IsSuccess);
         var q = result.Value!;
         Assert.Equal(20m, q.Subtotal);            // 2 * 10
-        Assert.Equal(6.99m, q.Shipping);          // under free threshold, single line
+        Assert.Equal(7.74m, q.Shipping);          // 6.99 base + 1 extra item * 0.75, under free threshold
         Assert.Equal(1.45m, q.Tax);               // 20 * 0.0725
-        Assert.Equal(28.44m, q.Total);            // 20 + 6.99 + 1.45
+        Assert.Equal(29.19m, q.Total);            // 20 + 7.74 + 1.45
     }
 
     [Fact]

@@ -1,0 +1,38 @@
+# One-command run: `docker compose up`
+# No secret literals live here — POSTGRES_PASSWORD must come from .env (see .env.example).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-widgetworks}
+      POSTGRES_DB: ${POSTGRES_DB:-widgetworks}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-widgetworks}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Postgres__Host: db
+      Postgres__Port: "5432"
+      Postgres__Database: ${POSTGRES_DB:-widgetworks}
+      Postgres__Username: ${POSTGRES_USER:-widgetworks}
+      Postgres__Password: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WidgetWorks.Domain/WidgetWorks.Domain.csproj" />
+    <Project Path="src/WidgetWorks.Application/WidgetWorks.Application.csproj" />
+    <Project Path="src/WidgetWorks.Infrastructure/WidgetWorks.Infrastructure.csproj" />
+    <Project Path="src/WidgetWorks.WebApi/WidgetWorks.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WidgetWorks.UnitTests/WidgetWorks.UnitTests.csproj" />
+  </Folder>
+</Solution>

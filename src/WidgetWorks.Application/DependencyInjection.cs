@@ -4,6 +4,9 @@ using WidgetWorks.Application.Auth.Logout;
 using WidgetWorks.Application.Auth.Refresh;
 using WidgetWorks.Application.Auth.Register;
 using WidgetWorks.Application.Security.SecureAccount;
+using WidgetWorks.Application.TwoFactor.Confirm;
+using WidgetWorks.Application.TwoFactor.Disable;
+using WidgetWorks.Application.TwoFactor.Enroll;
 
 namespace WidgetWorks.Application;
 
@@ -17,6 +20,9 @@ public static class DependencyInjection
         services.AddScoped<RefreshHandler>();
         services.AddScoped<LogoutHandler>();
         services.AddScoped<SecureAccountHandler>();
+        services.AddScoped<EnrollHandler>();
+        services.AddScoped<ConfirmEnrollHandler>();
+        services.AddScoped<DisableTwoFactorHandler>();
         return services;
     }
 }

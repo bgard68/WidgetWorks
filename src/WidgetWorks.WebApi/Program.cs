@@ -4,11 +4,14 @@ using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using WidgetWorks.Application;
 using WidgetWorks.Application.Abstractions;
+using WidgetWorks.Domain.Users;
 using WidgetWorks.Infrastructure;
 using WidgetWorks.Infrastructure.Migrations;
 using WidgetWorks.Infrastructure.Security;
 using WidgetWorks.Infrastructure.Seeding;
 using WidgetWorks.WebApi.Auth;
+using WidgetWorks.WebApi.Authorization;
+using WidgetWorks.WebApi.Catalog;
 using WidgetWorks.WebApi.Security;
 using WidgetWorks.WebApi.TwoFactor;
 
@@ -55,11 +58,15 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(Policies.ManageCatalog, policy => policy.RequireRole(UserRoles.Manager, UserRoles.Administrator));
+    options.AddPolicy(Policies.ManageUsers, policy => policy.RequireRole(UserRoles.Administrator));
+});
 
 var app = builder.Build();
 
-// Apply migrations and seed demo accounts on startup.
+// Apply migrations and seed demo accounts + demo widgets on startup.
 var connectionString = WidgetWorks.Infrastructure.DependencyInjection.BuildConnectionString(app.Configuration);
 MigrationRunner.Run(connectionString);
 
@@ -84,6 +91,7 @@ app.MapGet("/health", (TimeProvider clock) => Results.Ok(new { status = "ok", ut
 app.MapAuthEndpoints();
 app.MapSecurityEndpoints();
 app.MapTwoFactorEndpoints();
+app.MapCatalogEndpoints();
 
 app.Run();
 

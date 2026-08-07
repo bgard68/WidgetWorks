@@ -3,6 +3,11 @@ using WidgetWorks.Application.Auth.Login;
 using WidgetWorks.Application.Auth.Logout;
 using WidgetWorks.Application.Auth.Refresh;
 using WidgetWorks.Application.Auth.Register;
+using WidgetWorks.Application.Catalog.Browse;
+using WidgetWorks.Application.Catalog.Create;
+using WidgetWorks.Application.Catalog.Detail;
+using WidgetWorks.Application.Catalog.Inventory;
+using WidgetWorks.Application.Catalog.Update;
 using WidgetWorks.Application.Security.SecureAccount;
 using WidgetWorks.Application.TwoFactor.Challenge;
 using WidgetWorks.Application.TwoFactor.Confirm;
@@ -27,6 +32,11 @@ public static class DependencyInjection
         services.AddScoped<DisableTwoFactorHandler>();
         services.AddScoped<TwoFactorLoginHandler>();
         services.AddScoped<RecoveryLoginHandler>();
+        services.AddScoped<BrowseWidgetsHandler>();
+        services.AddScoped<GetWidgetHandler>();
+        services.AddScoped<CreateWidgetHandler>();
+        services.AddScoped<UpdateWidgetHandler>();
+        services.AddScoped<AdjustInventoryHandler>();
         return services;
     }
 }

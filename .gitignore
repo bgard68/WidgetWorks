@@ -13,13 +13,20 @@
 !.env.example
 *.env
 !*.env.example
+.env.local
+.env.*.local
 
 # Local app config overrides
 appsettings.*.local.json
 appsettings.Local.json
+appsettings.Secrets.json
+appsettings.*.Secrets.json
+local.settings.json
 secrets.json
 **/secrets/*
 !**/secrets/.gitkeep
+*.secret
+*.secrets
 
 # Keys, certs, signing material
 *.pem
@@ -27,6 +34,7 @@ secrets.json
 *.pfx
 *.p12
 *.pkcs12
+*.p8
 *.jks
 *.keystore
 *.crt
@@ -34,16 +42,27 @@ secrets.json
 *.der
 *.asc
 *.gpg
+*.snk
+*.mobileprovision
 id_rsa*
 id_ed25519*
 *.ppk
 
-# Cloud / provider credentials
+# Cloud / provider & tool credentials
 .aws/
 .azure/
 gha-creds-*.json
 azureauth.json
 *.publishsettings
+.vault-token
+kubeconfig
+*.kubeconfig
+.kube/
+.npmrc
+!.npmrc.example
+.pypirc
+*.tfvars
+!*.tfvars.example
 
 ############################
 # AI / agent artifacts     🤖  (never publish)

@@ -1,4 +1,4 @@
-# WidgetWorks — gitleaks configuration
+# WidgetWorks — gitleaks configuration (locked down)
 # DevSecOps policy: NO secrets, tokens, keys, or connection strings in git.
 # The ONLY sanctioned "secret-looking" material is the seeded DEMO account
 # credentials (intentionally public so reviewers can log in) and *.example files.
@@ -9,8 +9,8 @@
 
 title = "WidgetWorks gitleaks policy"
 
-# Start from gitleaks' maintained ruleset (AWS, Azure, GCP, Stripe, JWT,
-# private keys, GitHub/Slack tokens, generic API keys, etc.)
+# Start from gitleaks' maintained ruleset (AWS, Azure, GCP, Stripe, SendGrid,
+# Mailgun, Twilio, JWT, private keys, GitHub/Slack tokens, generic API keys, etc.)
 [extend]
 useDefault = true
 
@@ -37,6 +37,18 @@ description = "Real Google OAuth client ID (never commit — use config/user-sec
 # The '<digits>-' prefix means the 'your-google-client-id...' placeholder does NOT match.
 regex = '''\b[0-9]{6,}-[a-z0-9]{16,}\.apps\.googleusercontent\.com\b'''
 keywords = ["apps.googleusercontent.com"]
+
+[[rules]]
+id = "widgetworks-sendgrid-key"
+description = "SendGrid API key"
+regex = '''SG\.[A-Za-z0-9_\-]{16,32}\.[A-Za-z0-9_\-]{16,64}'''
+keywords = ["SG."]
+
+[[rules]]
+id = "widgetworks-smtp-or-email-key"
+description = "SMTP / email provider password or API key in config"
+regex = '''(?i)"?(smtp[_-]?pass(word)?|mail[_-]?password|email[_-]?api[_-]?key|sendgrid[_-]?api[_-]?key)"?\s*[:=]\s*["']?[^"'\s]{6,}'''
+keywords = ["smtp", "mailpassword", "sendgrid", "emailapikey"]
 
 [[rules]]
 id = "widgetworks-pg-connection-string"

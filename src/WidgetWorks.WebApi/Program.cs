@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
@@ -7,6 +6,7 @@ using WidgetWorks.Application;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Infrastructure;
 using WidgetWorks.Infrastructure.Migrations;
+using WidgetWorks.Infrastructure.Security;
 using WidgetWorks.Infrastructure.Seeding;
 using WidgetWorks.WebApi.Auth;
 using WidgetWorks.WebApi.Security;
@@ -18,8 +18,10 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddOpenApi();
 
-var jwtSection = builder.Configuration.GetSection("Jwt");
-var signingKey = jwtSection["SigningKey"] ?? string.Empty;
+var jwtOptions = new JwtOptions();
+builder.Configuration.GetSection("Jwt").Bind(jwtOptions);
+var keyRing = new JwtKeyRing(jwtOptions);
+builder.Services.AddSingleton(keyRing);
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -32,9 +34,9 @@ builder.Services
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtSection["Issuer"],
-            ValidAudience = jwtSection["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = jwtOptions.Audience,
+            IssuerSigningKeyResolver = (_, _, kid, _) => keyRing.ResolveKeys(kid),
         };
         options.Events = new JwtBearerEvents
         {

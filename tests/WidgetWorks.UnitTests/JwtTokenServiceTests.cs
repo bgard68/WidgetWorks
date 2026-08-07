@@ -14,7 +14,7 @@ public class JwtTokenServiceTests
 
     private static JwtTokenService CreateService(DateTimeOffset now)
     {
-        var options = Options.Create(new JwtOptions
+        var jwtOptions = new JwtOptions
         {
             Issuer = "https://localhost",
             Audience = "widgetworks",
@@ -22,8 +22,9 @@ public class JwtTokenServiceTests
             KeyId = "wk-1",
             AccessTokenMinutes = 15,
             RefreshTokenDays = 14,
-        });
-        return new JwtTokenService(options, new FixedTimeProvider(now));
+        };
+        var options = Options.Create(jwtOptions);
+        return new JwtTokenService(options, new JwtKeyRing(jwtOptions), new FixedTimeProvider(now));
     }
 
     [Fact]

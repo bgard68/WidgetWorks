@@ -9,7 +9,7 @@ using WidgetWorks.Domain.Users;
 
 namespace WidgetWorks.Infrastructure.Security;
 
-public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider clock) : ITokenService
+public sealed class JwtTokenService(IOptions<JwtOptions> options, JwtKeyRing keyRing, TimeProvider clock) : ITokenService
 {
     private const string PurposeClaim = "purpose";
     private const string TwoFactorPurpose = "2fa";
@@ -28,7 +28,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider c
             IssuedAt = now.UtcDateTime,
             NotBefore = now.UtcDateTime,
             Expires = expires.UtcDateTime,
-            SigningCredentials = BuildCredentials(),
+            SigningCredentials = keyRing.SigningCredentials,
             Claims = new Dictionary<string, object>
             {
                 [JwtRegisteredClaimNames.Sub] = user.Id.ToString(),
@@ -64,7 +64,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider c
             IssuedAt = now.UtcDateTime,
             NotBefore = now.UtcDateTime,
             Expires = now.AddMinutes(5).UtcDateTime,
-            SigningCredentials = BuildCredentials(),
+            SigningCredentials = keyRing.SigningCredentials,
             Claims = new Dictionary<string, object>
             {
                 [JwtRegisteredClaimNames.Sub] = user.Id.ToString(),
@@ -85,7 +85,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider c
             ValidateIssuerSigningKey = true,
             ValidIssuer = _options.Issuer,
             ValidAudience = _options.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)),
+            IssuerSigningKeyResolver = (_, _, kid, _) => keyRing.ResolveKeys(kid),
         };
 
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(challengeToken, parameters);
@@ -102,11 +102,5 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider c
         return result.Claims.TryGetValue(JwtRegisteredClaimNames.Sub, out var sub) && Guid.TryParse(sub?.ToString(), out var id)
             ? id
             : null;
-    }
-
-    private SigningCredentials BuildCredentials()
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)) { KeyId = _options.KeyId };
-        return new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
     }
 }

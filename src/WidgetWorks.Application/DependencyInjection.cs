@@ -13,7 +13,11 @@ using WidgetWorks.Application.Catalog.Create;
 using WidgetWorks.Application.Catalog.Detail;
 using WidgetWorks.Application.Catalog.Inventory;
 using WidgetWorks.Application.Catalog.Update;
+using WidgetWorks.Application.Checkout.PlaceOrder;
 using WidgetWorks.Application.Checkout.Quote;
+using WidgetWorks.Application.Orders.GetMine;
+using WidgetWorks.Application.Orders.ListMine;
+using WidgetWorks.Application.Orders.Lookup;
 using WidgetWorks.Application.Security.SecureAccount;
 using WidgetWorks.Application.TwoFactor.Challenge;
 using WidgetWorks.Application.TwoFactor.Confirm;
@@ -49,6 +53,10 @@ public static class DependencyInjection
         services.AddScoped<RemoveCartItemHandler>();
         services.AddScoped<MergeCartHandler>();
         services.AddScoped<QuoteCartHandler>();
+        services.AddScoped<CheckoutHandler>();
+        services.AddScoped<GuestOrderLookupHandler>();
+        services.AddScoped<ListMyOrdersHandler>();
+        services.AddScoped<GetMyOrderHandler>();
         return services;
     }
 }

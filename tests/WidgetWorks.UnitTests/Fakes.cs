@@ -2,6 +2,7 @@ using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Auth;
 using WidgetWorks.Domain.Carts;
 using WidgetWorks.Domain.Catalog;
+using WidgetWorks.Domain.Orders;
 using WidgetWorks.Domain.Users;
 
 namespace WidgetWorks.UnitTests.Fakes;
@@ -147,6 +148,66 @@ public sealed class InMemoryCartRepository : ICartRepository
             .Select(i => new CartItem { Id = i.Id, CartId = i.CartId, WidgetId = i.WidgetId, Quantity = i.Quantity, AddedAt = i.AddedAt })
             .ToList(),
     };
+}
+
+public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : IOrderRepository
+{
+    public readonly List<Order> Orders = new();
+
+    public Task<bool> TryPlaceAsync(Order order, CancellationToken ct)
+    {
+        foreach (var item in order.Items)
+        {
+            if (!widgets.Store.TryGetValue(item.WidgetId, out var w) || (w.QuantityOnHand - w.QuantityReserved) < item.Quantity)
+            {
+                return Task.FromResult(false);
+            }
+        }
+
+        foreach (var item in order.Items)
+        {
+            widgets.Store[item.WidgetId].QuantityReserved += item.Quantity;
+        }
+
+        Orders.Add(order);
+        return Task.FromResult(true);
+    }
+
+    public Task MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    {
+        var order = Orders.First(o => o.Id == orderId);
+        order.Status = OrderStatus.Paid;
+        order.PaymentProvider = provider;
+        order.PaymentReference = reference;
+        order.UpdatedAt = now;
+        return Task.CompletedTask;
+    }
+
+    public Task MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct)
+    {
+        var stored = Orders.First(o => o.Id == order.Id);
+        stored.Status = OrderStatus.PaymentFailed;
+        stored.UpdatedAt = now;
+        foreach (var item in order.Items)
+        {
+            if (widgets.Store.TryGetValue(item.WidgetId, out var w))
+            {
+                w.QuantityReserved -= item.Quantity;
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
+        => Task.FromResult(Orders.FirstOrDefault(o => o.Id == id));
+
+    public Task<Order?> GetByNumberAndEmailAsync(string orderNumber, string email, CancellationToken ct)
+        => Task.FromResult(Orders.FirstOrDefault(o =>
+            o.OrderNumber == orderNumber && string.Equals(o.Email, email, StringComparison.OrdinalIgnoreCase)));
+
+    public Task<IReadOnlyList<Order>> GetForUserAsync(Guid userId, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<Order>>(Orders.Where(o => o.UserId == userId).OrderByDescending(o => o.CreatedAt).ToList());
 }
 
 public sealed class InMemoryRefreshTokenRepository : IRefreshTokenRepository

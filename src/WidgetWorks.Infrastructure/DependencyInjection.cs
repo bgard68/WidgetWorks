@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Auth;
+using WidgetWorks.Infrastructure.Payments;
 using WidgetWorks.Infrastructure.Persistence;
 using WidgetWorks.Infrastructure.Pricing;
 using WidgetWorks.Infrastructure.Security;
@@ -13,7 +14,7 @@ namespace WidgetWorks.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit, 2FA, catalog, cart, pricing.</summary>
+    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit, 2FA, catalog, cart, pricing, orders, payments.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Dapper maps snake_case columns to PascalCase properties.
@@ -37,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<ITwoFactorRepository, TwoFactorRepository>();
         services.AddScoped<IWidgetRepository, WidgetRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
+        services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddSingleton<ITotpService, TotpService>();
         services.AddSingleton<IRecoveryCodes, RecoveryCodeService>();
@@ -45,6 +47,19 @@ public static class DependencyInjection
         services.AddSingleton<ITaxCalculator, StateSalesTaxCalculator>();
         services.AddScoped<ITokenService, JwtTokenService>();
         services.AddScoped<DbSeeder>();
+
+        // Payments: Mock by default; Stripe test-mode adapter selected by config (secret never committed).
+        var paymentsProvider = configuration["Payments:Provider"] ?? "Mock";
+        if (string.Equals(paymentsProvider, "Stripe", StringComparison.OrdinalIgnoreCase))
+        {
+            services.Configure<StripeOptions>(configuration.GetSection("Payments:Stripe"));
+            services.AddSingleton<HttpClient>();
+            services.AddScoped<IPaymentGateway, StripePaymentGateway>();
+        }
+        else
+        {
+            services.AddScoped<IPaymentGateway, MockPaymentGateway>();
+        }
 
         return services;
     }

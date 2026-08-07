@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using WidgetWorks.Application.Abstractions;
+using WidgetWorks.Application.Auth;
 using WidgetWorks.Infrastructure.Persistence;
 using WidgetWorks.Infrastructure.Security;
 using WidgetWorks.Infrastructure.Seeding;
@@ -11,7 +12,7 @@ namespace WidgetWorks.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>Registers infrastructure services: data access, security, clock, seeder.</summary>
+    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Dapper maps snake_case columns to PascalCase properties.
@@ -25,8 +26,13 @@ public static class DependencyInjection
 
         services.Configure<JwtOptions>(configuration.GetSection("Jwt"));
 
+        var accountSecurity = new AccountSecurityOptions();
+        configuration.GetSection("AccountSecurity").Bind(accountSecurity);
+        services.AddSingleton(accountSecurity);
+
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IAuditLog, AuditLog>();
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<ITokenService, JwtTokenService>();
         services.AddScoped<DbSeeder>();

@@ -1,6 +1,7 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Auth;
 using WidgetWorks.Domain.Common;
+using WidgetWorks.Domain.Users;
 
 namespace WidgetWorks.Application.Auth.Login;
 
@@ -15,7 +16,7 @@ public sealed class LoginHandler(
     AccountSecurityOptions security,
     TimeProvider clock)
 {
-    public async Task<Result<AuthResponse>> Handle(LoginCommand command, CancellationToken ct)
+    public async Task<Result<LoginResult>> Handle(LoginCommand command, CancellationToken ct)
     {
         var normalized = (command.Email ?? string.Empty).Trim().ToUpperInvariant();
         var user = await users.GetByNormalizedEmailAsync(normalized, ct);
@@ -24,7 +25,7 @@ public sealed class LoginHandler(
         if (user is not null && user.IsLockedOut(now))
         {
             await audit.WriteAsync(user.Id, "login.locked", null, ct);
-            return Result<AuthResponse>.Fail("Account is temporarily locked. Try again later.");
+            return Result<LoginResult>.Fail("Account is temporarily locked. Try again later.");
         }
 
         if (user is null || user.PasswordHash is null || !hasher.Verify(command.Password, user.PasswordHash))
@@ -46,7 +47,7 @@ public sealed class LoginHandler(
                 }
             }
 
-            return Result<AuthResponse>.Fail("Invalid email or password.");
+            return Result<LoginResult>.Fail("Invalid email or password.");
         }
 
         if (user.FailedAccessCount != 0 || user.LockedUntil is not null)
@@ -56,6 +57,20 @@ public sealed class LoginHandler(
             await users.UpdateAsync(user, ct);
         }
 
+        if (user.TwoFactorEnabled)
+        {
+            var challenge = tokens.CreateChallengeToken(user);
+            await audit.WriteAsync(user.Id, "login.2fa_challenge", null, ct);
+            return Result<LoginResult>.Success(new LoginResult(true, challenge, null));
+        }
+
+        var response = await IssueTokensAsync(user, now, ct);
+        await audit.WriteAsync(user.Id, "login.success", null, ct);
+        return Result<LoginResult>.Success(new LoginResult(false, null, response));
+    }
+
+    private async Task<AuthResponse> IssueTokensAsync(User user, DateTimeOffset now, CancellationToken ct)
+    {
         var access = tokens.CreateAccessToken(user);
         var refresh = tokens.CreateRefreshToken(Guid.NewGuid());
 
@@ -71,13 +86,6 @@ public sealed class LoginHandler(
             },
             ct);
 
-        await audit.WriteAsync(user.Id, "login.success", null, ct);
-
-        return Result<AuthResponse>.Success(new AuthResponse(
-            access.Value,
-            access.ExpiresAt,
-            refresh.Value,
-            refresh.ExpiresAt,
-            user.Role));
+        return new AuthResponse(access.Value, access.ExpiresAt, refresh.Value, refresh.ExpiresAt, user.Role);
     }
 }

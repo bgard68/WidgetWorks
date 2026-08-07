@@ -1,0 +1,161 @@
+##############################################
+# WidgetWorks .gitignore
+# DevSecOps baseline — keep secrets, local state,
+# AI/agent artifacts, logs, and cloud exports OUT.
+##############################################
+
+############################
+# Secrets / credentials  🔒  (NEVER commit)
+############################
+# Environment files — the ONLY allowed one is *.env.example
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+
+# Local app config overrides
+appsettings.*.local.json
+appsettings.Local.json
+secrets.json
+**/secrets/*
+!**/secrets/.gitkeep
+
+# Keys, certs, signing material
+*.pem
+*.key
+*.pfx
+*.p12
+*.pkcs12
+*.jks
+*.keystore
+*.crt
+*.cer
+*.der
+*.asc
+*.gpg
+id_rsa*
+id_ed25519*
+*.ppk
+
+# Cloud / provider credentials
+.aws/
+.azure/
+gha-creds-*.json
+azureauth.json
+*.publishsettings
+
+############################
+# AI / agent artifacts     🤖  (never publish)
+############################
+.claude/
+.claude-*/
+CLAUDE.local.md
+.cursor/
+.aider*
+.continue/
+*.conversation.json
+conversations/
+transcripts/
+.chat/
+.ai-logs/
+
+############################
+# Azure / IaC exports      ☁️
+# Exports must NOT land in the repo. The retrieval
+# script (scripts/**) is explicitly re-included below.
+############################
+infra/exports/
+**/azure-export*.json
+**/arm-export*.json
+**/*.exported.json
+exported-template*.json
+template.json
+parameters.json
+*.armparam.json
+*.bicepparam
+!example.bicepparam
+# Terraform state (contains secrets)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+# ...but ALWAYS keep the infra-retrieval script(s)
+!scripts/**
+
+############################
+# Logs                     📄
+############################
+*.log
+logs/
+log/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+Seq/
+serilog*.json
+!serilog.example.json
+
+############################
+# .NET / Visual Studio
+############################
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+project.lock.json
+artifacts/
+BenchmarkDotNet.Artifacts/
+*.received.*
+# Test / coverage
+[Tt]est[Rr]esults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+TestResults*.xml
+
+############################
+# Node / React (Vite) front end
+############################
+node_modules/
+dist/
+build/
+.vite/
+.cache/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+.pnp.*
+
+############################
+# Docker / runtime
+############################
+*.pid
+docker-compose.override.yml
+.docker/
+pgdata/
+postgres-data/
+
+############################
+# OS / editor cruft
+############################
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*~
+.idea/
+*.iml

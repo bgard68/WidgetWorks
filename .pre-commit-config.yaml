@@ -1,0 +1,31 @@
+# Pre-commit hooks — first line of defence, BEFORE code leaves the dev machine.
+# Install once:   pip install pre-commit && pre-commit install
+# Run on demand:  pre-commit run --all-files
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        args: ["protect", "--staged", "--redact", "--config", ".gitleaks.toml"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: local
+    hooks:
+      - id: no-forbidden-artifacts
+        name: block .env / azure exports / .claude artifacts
+        entry: bash -c 'git diff --cached --name-only | grep -E "(^|/)(\.env$|\.env\.[^e]|\.claude/|infra/exports/|.*azure-export.*\.json|.*\.tfstate)" && echo "Blocked: forbidden artifact staged." && exit 1 || exit 0'
+        language: system
+        pass_filenames: false

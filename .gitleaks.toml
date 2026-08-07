@@ -1,0 +1,85 @@
+# WidgetWorks — gitleaks configuration
+# DevSecOps policy: NO secrets, tokens, keys, or connection strings in git.
+# The ONLY sanctioned "secret-looking" material is the seeded DEMO account
+# credentials (intentionally public so reviewers can log in) and *.example files.
+#
+# Run locally:   gitleaks detect --config .gitleaks.toml --redact
+# Pre-commit:    gitleaks protect --staged --config .gitleaks.toml --redact
+# CI enforces this on every push/PR (see .github/workflows/ci.yml).
+
+title = "WidgetWorks gitleaks policy"
+
+# Start from gitleaks' maintained ruleset (AWS, Azure, GCP, Stripe, JWT,
+# private keys, GitHub/Slack tokens, generic API keys, etc.)
+[extend]
+useDefault = true
+
+##############################################################################
+# Extra project-specific rules (raise signal on OUR concrete secret shapes)
+##############################################################################
+
+[[rules]]
+id = "widgetworks-stripe-live-key"
+description = "Stripe LIVE secret/publishable key (test keys only, never live)"
+regex = '''(?i)\b(sk|rk|pk)_live_[0-9a-zA-Z]{16,}\b'''
+keywords = ["sk_live_", "rk_live_", "pk_live_"]
+
+[[rules]]
+id = "widgetworks-google-oauth-client-secret"
+description = "Google OAuth client secret"
+regex = '''GOCSPX-[0-9A-Za-z_\-]{20,}'''
+keywords = ["GOCSPX-"]
+
+[[rules]]
+id = "widgetworks-google-oauth-client-id"
+description = "Real Google OAuth client ID (never commit — use config/user-secrets)"
+# Real IDs look like 123456789012-abcd....apps.googleusercontent.com.
+# The '<digits>-' prefix means the 'your-google-client-id...' placeholder does NOT match.
+regex = '''\b[0-9]{6,}-[a-z0-9]{16,}\.apps\.googleusercontent\.com\b'''
+keywords = ["apps.googleusercontent.com"]
+
+[[rules]]
+id = "widgetworks-pg-connection-string"
+description = "PostgreSQL connection string with embedded password"
+regex = '''(?i)(host|server)=[^;]+;.*password=[^;'"\s]+'''
+keywords = ["password="]
+
+[[rules]]
+id = "widgetworks-jwt-signing-key"
+description = "Hard-coded JWT signing key in config"
+regex = '''(?i)"(Jwt|Token)(Signing)?(Key|Secret)"\s*:\s*"[^"]{16,}"'''
+keywords = ["SigningKey", "JwtKey", "TokenSecret"]
+
+##############################################################################
+# Allowlist — the DevSecOps exception: intentional, non-sensitive demo material
+##############################################################################
+[allowlist]
+description = "Intentional demo/seed material and example placeholders"
+
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)README\.md$''',
+  '''(^|/)docs/.*\.md$''',
+  '''src/WidgetWorks\.Infrastructure/Migrations/.*[Ss]eed.*\.sql$''',
+  '''(^|/)example\.bicepparam$''',
+  '''(^|/)serilog\.example\.json$''',
+]
+
+regexes = [
+  '''admin@widgetworks\.demo''',
+  '''demo@widgetworks\.demo''',
+  '''(?i)DemoAdmin!Change[0-9]{2,}''',
+  '''(?i)DemoUser!Change[0-9]{2,}''',
+  '''pk_test_[0-9a-zA-Z]{10,}''',
+  '''sk_test_00000000000000EXAMPLE''',
+  '''your-google-client-id\.apps\.googleusercontent\.com''',
+]
+
+stopwords = [
+  "changeme",
+  "example",
+  "placeholder",
+  "your-",
+  "xxxxxxxx",
+  "replace-me",
+]

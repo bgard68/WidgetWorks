@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using Scalar.AspNetCore;
 using WidgetWorks.Application;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Infrastructure;
@@ -70,6 +71,7 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference();   // interactive API UI at /scalar/v1
 }
 
 app.UseAuthentication();

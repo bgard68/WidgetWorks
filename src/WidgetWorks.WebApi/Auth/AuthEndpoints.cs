@@ -2,8 +2,14 @@ using WidgetWorks.Application.Auth.Login;
 using WidgetWorks.Application.Auth.Logout;
 using WidgetWorks.Application.Auth.Refresh;
 using WidgetWorks.Application.Auth.Register;
+using WidgetWorks.Application.TwoFactor.Challenge;
+using WidgetWorks.Application.TwoFactor.Recovery;
 
 namespace WidgetWorks.WebApi.Auth;
+
+public sealed record TwoFactorLoginRequest(string ChallengeToken, string Code);
+
+public sealed record RecoveryLoginRequest(string ChallengeToken, string RecoveryCode);
 
 public static class AuthEndpoints
 {
@@ -22,6 +28,28 @@ public static class AuthEndpoints
         group.MapPost("/login", async (LoginCommand command, LoginHandler handler, CancellationToken ct) =>
         {
             var result = await handler.Handle(command, ct);
+            if (result.IsFailure)
+            {
+                return Results.Json(new { error = result.Error }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var login = result.Value!;
+            return login.RequiresTwoFactor
+                ? Results.Ok(new { twoFactorRequired = true, challengeToken = login.ChallengeToken })
+                : Results.Ok(login.Tokens);
+        });
+
+        group.MapPost("/2fa", async (TwoFactorLoginRequest body, TwoFactorLoginHandler handler, CancellationToken ct) =>
+        {
+            var result = await handler.Handle(new TwoFactorLoginCommand(body.ChallengeToken, body.Code), ct);
+            return result.IsSuccess
+                ? Results.Ok(result.Value)
+                : Results.Json(new { error = result.Error }, statusCode: StatusCodes.Status401Unauthorized);
+        });
+
+        group.MapPost("/2fa/recovery", async (RecoveryLoginRequest body, RecoveryLoginHandler handler, CancellationToken ct) =>
+        {
+            var result = await handler.Handle(new RecoveryLoginCommand(body.ChallengeToken, body.RecoveryCode), ct);
             return result.IsSuccess
                 ? Results.Ok(result.Value)
                 : Results.Json(new { error = result.Error }, statusCode: StatusCodes.Status401Unauthorized);

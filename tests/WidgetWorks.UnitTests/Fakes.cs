@@ -93,4 +93,91 @@ public sealed class StubTokenService : ITokenService
     public IssuedRefreshToken CreateRefreshToken(Guid familyId) => new("refresh-raw", "refresh-hash-" + familyId, familyId, Far);
 
     public string HashRefreshToken(string rawToken) => "hash:" + rawToken;
+
+    public string CreateChallengeToken(User user) => "challenge-" + user.Id;
+
+    public Task<Guid?> ValidateChallengeTokenAsync(string challengeToken)
+    {
+        var raw = challengeToken.StartsWith("challenge-", StringComparison.Ordinal)
+            ? challengeToken["challenge-".Length..]
+            : challengeToken;
+        return Task.FromResult(Guid.TryParse(raw, out var id) ? (Guid?)id : null);
+    }
+}
+
+public sealed class FakeTotpService : ITotpService
+{
+    public string ValidCode { get; set; } = "654321";
+
+    public TotpSecret CreateSecret(string accountName) => new("SECRETBASE32", "otpauth://totp/x");
+
+    public bool Verify(string secretBase32, string code, DateTimeOffset now) => code == ValidCode;
+}
+
+public sealed class InMemoryTwoFactorRepository : ITwoFactorRepository
+{
+    public readonly Dictionary<Guid, TwoFactorSecret> Secrets = new();
+    private readonly List<RecoveryRow> _codes = new();
+
+    public Task UpsertPendingSecretAsync(Guid userId, string secretBase32, CancellationToken ct)
+    {
+        Secrets[userId] = new TwoFactorSecret { UserId = userId, Secret = secretBase32, IsConfirmed = false };
+        return Task.CompletedTask;
+    }
+
+    public Task<TwoFactorSecret?> GetSecretAsync(Guid userId, CancellationToken ct)
+        => Task.FromResult(Secrets.TryGetValue(userId, out var s) ? s : null);
+
+    public Task MarkConfirmedAsync(Guid userId, CancellationToken ct)
+    {
+        if (Secrets.TryGetValue(userId, out var s))
+        {
+            s.IsConfirmed = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteSecretAsync(Guid userId, CancellationToken ct)
+    {
+        Secrets.Remove(userId);
+        return Task.CompletedTask;
+    }
+
+    public Task AddRecoveryCodesAsync(Guid userId, IReadOnlyList<string> codeHashes, DateTimeOffset now, CancellationToken ct)
+    {
+        foreach (var hash in codeHashes)
+        {
+            _codes.Add(new RecoveryRow { UserId = userId, Hash = hash });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteRecoveryCodesAsync(Guid userId, CancellationToken ct)
+    {
+        _codes.RemoveAll(c => c.UserId == userId);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> ConsumeRecoveryCodeAsync(Guid userId, string codeHash, DateTimeOffset usedAt, CancellationToken ct)
+    {
+        var row = _codes.FirstOrDefault(c => c.UserId == userId && c.Hash == codeHash && c.UsedAt is null);
+        if (row is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        row.UsedAt = usedAt;
+        return Task.FromResult(true);
+    }
+
+    private sealed class RecoveryRow
+    {
+        public Guid UserId { get; set; }
+
+        public string Hash { get; set; } = string.Empty;
+
+        public DateTimeOffset? UsedAt { get; set; }
+    }
 }

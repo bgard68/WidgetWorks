@@ -11,15 +11,15 @@ namespace WidgetWorks.Infrastructure.Security;
 
 public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider clock) : ITokenService
 {
+    private const string PurposeClaim = "purpose";
+    private const string TwoFactorPurpose = "2fa";
+
     private readonly JwtOptions _options = options.Value;
 
     public AccessToken CreateAccessToken(User user)
     {
         var now = clock.GetUtcNow();
         var expires = now.AddMinutes(_options.AccessTokenMinutes);
-
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)) { KeyId = _options.KeyId };
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var descriptor = new SecurityTokenDescriptor
         {
@@ -28,7 +28,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider c
             IssuedAt = now.UtcDateTime,
             NotBefore = now.UtcDateTime,
             Expires = expires.UtcDateTime,
-            SigningCredentials = credentials,
+            SigningCredentials = BuildCredentials(),
             Claims = new Dictionary<string, object>
             {
                 [JwtRegisteredClaimNames.Sub] = user.Id.ToString(),
@@ -37,8 +37,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider c
             },
         };
 
-        var handler = new JsonWebTokenHandler();
-        var token = handler.CreateToken(descriptor);
+        var token = new JsonWebTokenHandler().CreateToken(descriptor);
         return new AccessToken(token, expires);
     }
 
@@ -53,5 +52,61 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider c
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(rawToken));
         return Convert.ToHexString(bytes);
+    }
+
+    public string CreateChallengeToken(User user)
+    {
+        var now = clock.GetUtcNow();
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Issuer = _options.Issuer,
+            Audience = _options.Audience,
+            IssuedAt = now.UtcDateTime,
+            NotBefore = now.UtcDateTime,
+            Expires = now.AddMinutes(5).UtcDateTime,
+            SigningCredentials = BuildCredentials(),
+            Claims = new Dictionary<string, object>
+            {
+                [JwtRegisteredClaimNames.Sub] = user.Id.ToString(),
+                [PurposeClaim] = TwoFactorPurpose,
+            },
+        };
+
+        return new JsonWebTokenHandler().CreateToken(descriptor);
+    }
+
+    public async Task<Guid?> ValidateChallengeTokenAsync(string challengeToken)
+    {
+        var parameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = _options.Issuer,
+            ValidAudience = _options.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)),
+        };
+
+        var result = await new JsonWebTokenHandler().ValidateTokenAsync(challengeToken, parameters);
+        if (!result.IsValid)
+        {
+            return null;
+        }
+
+        if (!result.Claims.TryGetValue(PurposeClaim, out var purpose) || purpose?.ToString() != TwoFactorPurpose)
+        {
+            return null;
+        }
+
+        return result.Claims.TryGetValue(JwtRegisteredClaimNames.Sub, out var sub) && Guid.TryParse(sub?.ToString(), out var id)
+            ? id
+            : null;
+    }
+
+    private SigningCredentials BuildCredentials()
+    {
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)) { KeyId = _options.KeyId };
+        return new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
     }
 }

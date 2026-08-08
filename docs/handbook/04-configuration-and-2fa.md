@@ -1,50 +1,75 @@
+[← Handbook index](README.md) · [Project README](../../README.md)
+
 # 4. Configuration, secrets, email & 2FA
 
 ## The one rule
 
-**No secret is ever committed.** The only tracked config file is `.env.example` (placeholders,
-allow-listed in `.gitleaks.toml`). `.gitignore` blocks `.env`, `secrets.json`, keys/certs;
-gitleaks scans every push.
+**No secret, token, key, connection string, or client id is ever committed.** `appsettings.json`
+holds only **non-secret defaults and structure** (log levels, JWT issuer/audience/`kid`, token
+lifetimes, demo seed *emails*). The only tracked config *file* with placeholder-ish values is
+`.env.example` (allow-listed in `.gitleaks.toml`). `.gitignore` blocks `.env`, `secrets.json`,
+keys/certs; gitleaks scans every push.
 
 ## Configuration precedence
 
-ASP.NET Core layers sources; later wins:
+ASP.NET Core layers configuration sources; **later wins**:
 
 ```
-appsettings.json  <  user-secrets (Development only)  <  environment variables
+appsettings.json                         non-secret defaults & structure ONLY
+   ↓ overridden by
+.NET user-secrets (Development only)      LOCAL DEV — stored in your OS profile, never in the repo
+   ↓ overridden by
+environment variables                     the source of truth for real values, from:
+                                            • GitHub Actions Variables / Secrets   (CI & build)
+                                            • Azure App Service "Application settings"
+                                              / Key Vault references                (production)
+                                            • plain env vars, or a git-ignored .env  (Docker Compose)
 ```
 
-Keys use the double-underscore convention that maps to config sections:
-`Jwt__SigningKey` → `Jwt:SigningKey`.
+So the intended flow for **anything sensitive or environment-specific** is: pull it from an
+**environment source first** (GitHub, Azure, env vars); fall back to **user-secrets** for local
+`dotnet run`; and put it in `appsettings.json` **only if it is a non-secret default**. Nothing
+sensitive is hard-coded.
+
+Keys map to env vars with the double-underscore convention that stands in for the `:` section
+separator: `Jwt:SigningKey` → `Jwt__SigningKey`, `ConnectionStrings:WidgetWorks` →
+`ConnectionStrings__WidgetWorks`, `Payments:Stripe:SecretKey` → `Payments__Stripe__SecretKey`.
+(Azure App Service and GitHub both let you set these `__` names directly.)
+
+The **web** app follows the same rule with Vite's `VITE_*` build-time variables: injected from
+**GitHub Actions Variables** in CI or a git-ignored **`web/.env.local`** in dev — never committed.
+The Google *client id* is public (it ships in the browser bundle) but is still kept out of source
+by policy.
 
 ## What goes where — and why
 
 | Setting (config key) | What it is | Where it lives | Why |
 |---|---|---|---|
-| `Jwt:SigningKey` | HMAC key for signing JWTs | user-secrets (dev) / env / Key Vault (prod) | Secret; long-lived signing material. |
-| `ConnectionStrings:WidgetWorks` or `Postgres:*` | DB connection / password | user-secrets or `.env` | Secret; the DB password. |
-| `Seed:DemoAdminPassword`, `Seed:DemoCustomerPassword` | Demo seed passwords | `.env` / user-secrets | Throwaway, documented — the sanctioned exception. |
-| `Google:ClientId` | Google OAuth **client id** | `.env` / env | **Public** (ships in the browser too); kept out of source by policy, not because it’s secret. |
-| `Payments:Provider` | `Mock` (default) or `Stripe` | `.env` / appsettings | Not secret. |
-| `Payments:Stripe:SecretKey` | Stripe **test** secret key | user-secrets / env | Secret; test keys only, never live. |
-| `Email:Provider` | `Dev` (log) or `Smtp` | `.env` / appsettings | Not secret. |
-| `Email:Host/Port/Username/Password` | SMTP settings | user-secrets / env | Password is secret. |
-| `Cors:AllowedOrigins` | Browser origins allowed to call the API | `.env` / appsettings | Not secret. |
-| `App:BaseUrl` | Public SPA URL (used in email links) | `.env` / appsettings | Not secret. |
+| `Jwt:SigningKey` | HMAC key for signing JWTs | env / GitHub Secret / Azure setting / Key Vault; user-secrets in dev | Secret; long-lived signing material. |
+| `ConnectionStrings:WidgetWorks` or `Postgres:*` | DB connection / password | env / Azure setting / Key Vault; user-secrets or `.env` in dev | Secret; the DB password. |
+| `Seed:DemoAdminPassword`, `Seed:DemoCustomerPassword` | Demo seed passwords | env / `.env` / user-secrets | Throwaway, documented — the sanctioned exception. |
+| `Google:ClientId` | Google OAuth **client id** | env / GitHub Variable / Azure setting | **Public** (ships in the browser too); kept out of source by policy, not because it's secret. |
+| `Payments:Provider` | `Mock` (default) or `Stripe` | env / appsettings | Not secret. |
+| `Payments:Stripe:SecretKey` | Stripe secret key (`sk_test_`/`sk_live_`) | env / GitHub Secret / Azure setting / Key Vault | Secret; never committed. |
+| `Payments:Stripe:WebhookSecret` | Stripe webhook signing secret (`whsec_`) | env / secret store | Secret. |
+| `Email:Provider` | `Dev` (log) or `Smtp` | env / appsettings | Not secret. |
+| `Email:Host/Port/Username/Password/...` | SMTP settings | env / secret store; user-secrets in dev | Password is secret. |
+| `Cors:AllowedOrigins` | Browser origins allowed to call the API | env / appsettings | Not secret. |
+| `App:BaseUrl` | Public SPA URL (used in email links) | env / appsettings | Not secret. |
 | `VITE_API_BASE_URL`, `VITE_GOOGLE_CLIENT_ID` | Web build-time config | GitHub Actions **Variables** (CI) / `web/.env.local` (dev) | Public; injected at build time, never committed. |
 
-**Why user-secrets vs `.env`:** user-secrets is read by the .NET app when you run it
-directly (`dotnet run`) — it lives in your OS profile, outside the repo, and is dev-only.
-A container can’t read your host user-secrets, so the Docker path uses a git-ignored
-`.env` for Compose variable substitution. In CI/prod, use Actions Secrets / Key Vault.
-See [`docs/local-development.md`](../local-development.md).
+**Why user-secrets vs `.env`:** user-secrets is read by the .NET app when you run it directly
+(`dotnet run`, Development environment) — it lives in your OS profile, outside the repo. A
+container can't read your host user-secrets, so the Docker path uses a git-ignored `.env` for
+Compose variable substitution. In CI/prod, use **GitHub Actions Secrets** and **Azure App Service
+settings / Key Vault**. See [`docs/local-development.md`](../local-development.md).
 
 ## Email setup
 
 `IEmailSender` has two adapters, chosen by `Email:Provider`:
 
 - **`Dev`** (default) — writes each message to **stdout** (the API container log). Great for
-  local dev with no mail server; you’ll see the password-reset link right in the logs.
+  local dev with no mail server; you'll see the password-reset link right in the logs.
 - **`Smtp`** — real delivery via any SMTP host. Configure and it just works:
 
 ```
@@ -52,7 +77,7 @@ Email__Provider=Smtp
 Email__Host=smtp.your-provider.com
 Email__Port=587
 Email__Username=apikey-or-user
-Email__Password=<secret>          # user-secrets / env only
+Email__Password=<secret>          # env / secret store / user-secrets only
 Email__UseStartTls=true
 Email__FromAddress=no-reply@yourdomain.com
 Email__FromName=WidgetWorks
@@ -68,11 +93,11 @@ a paid order or a status change. Production upgrade path (MailKit) is documented
 
 1. In Google Cloud Console, create an **OAuth 2.0 Client ID** (Web application) and add
    your web origin (e.g., `http://localhost:3000`) to authorized JavaScript origins.
-2. Put the **client id** in two places (it’s public):
+2. Put the **client id** in two places (it's public):
    - API: `Google__ClientId=<id>.apps.googleusercontent.com`
    - Web: `VITE_GOOGLE_CLIENT_ID=<id>.apps.googleusercontent.com`
 3. The browser uses Google Identity Services to get an **ID token** and POSTs it to
-   `POST /auth/google`; the API validates it against Google’s JWKS (issuer, audience =
+   `POST /auth/google`; the API validates it against Google's JWKS (issuer, audience =
    your client id, signature, expiry), then finds/links/creates the user and issues our
    own tokens. **No client secret** is used in this flow. See
    [ADR-024](../architecture/adr-024-google-oidc.md).

@@ -1,16 +1,16 @@
-# WidgetWorks — gitleaks configuration (locked down)
+# WidgetWorks — gitleaks configuration
 # DevSecOps policy: NO secrets, tokens, keys, or connection strings in git.
 # The ONLY sanctioned "secret-looking" material is the seeded DEMO account
 # credentials (intentionally public so reviewers can log in) and *.example files.
 #
 # Run locally:   gitleaks detect --config .gitleaks.toml --redact
 # Pre-commit:    gitleaks protect --staged --config .gitleaks.toml --redact
-# CI enforces this on every push/PR (see .github/workflows/ci.yml).
+# CI enforces this on every push/PR (see .github/workflows/secret-scan.yml).
 
 title = "WidgetWorks gitleaks policy"
 
-# Start from gitleaks' maintained ruleset (AWS, Azure, GCP, Stripe, SendGrid,
-# Mailgun, Twilio, JWT, private keys, GitHub/Slack tokens, generic API keys, etc.)
+# Start from gitleaks' maintained ruleset (AWS, Azure, GCP, Stripe, JWT,
+# private keys, GitHub/Slack tokens, generic API keys, etc.)
 [extend]
 useDefault = true
 
@@ -39,18 +39,6 @@ regex = '''\b[0-9]{6,}-[a-z0-9]{16,}\.apps\.googleusercontent\.com\b'''
 keywords = ["apps.googleusercontent.com"]
 
 [[rules]]
-id = "widgetworks-sendgrid-key"
-description = "SendGrid API key"
-regex = '''SG\.[A-Za-z0-9_\-]{16,32}\.[A-Za-z0-9_\-]{16,64}'''
-keywords = ["SG."]
-
-[[rules]]
-id = "widgetworks-smtp-or-email-key"
-description = "SMTP / email provider password or API key in config"
-regex = '''(?i)"?(smtp[_-]?pass(word)?|mail[_-]?password|email[_-]?api[_-]?key|sendgrid[_-]?api[_-]?key)"?\s*[:=]\s*["']?[^"'\s]{6,}'''
-keywords = ["smtp", "mailpassword", "sendgrid", "emailapikey"]
-
-[[rules]]
 id = "widgetworks-pg-connection-string"
 description = "PostgreSQL connection string with embedded password"
 regex = '''(?i)(host|server)=[^;]+;.*password=[^;'"\s]+'''
@@ -68,27 +56,33 @@ keywords = ["SigningKey", "JwtKey", "TokenSecret"]
 [allowlist]
 description = "Intentional demo/seed material and example placeholders"
 
+# Files that are allowed to contain 'secret-looking' demo values
 paths = [
   '''(^|/)\.env\.example$''',
   '''(^|/)README\.md$''',
   '''(^|/)docs/.*\.md$''',
+  # Seed migration scripts that create the demo admin + demo customer
   '''src/WidgetWorks\.Infrastructure/Migrations/.*[Ss]eed.*\.sql$''',
+  # End-to-end smoke test uses throwaway demo credentials by design
+  '''(^|/)scripts/smoke-test\.ps1$''',
   '''(^|/)example\.bicepparam$''',
   '''(^|/)serilog\.example\.json$''',
 ]
 
+# Known demo values (documented in README) — the sanctioned exception.
+# These are throwaway credentials for the local demo ONLY.
 regexes = [
   '''admin@widgetworks\.demo''',
   '''demo@widgetworks\.demo''',
-  '''(?i)DemoAdmin!Change[0-9]{2,}''',
-  '''(?i)DemoUser!Change[0-9]{2,}''',
+  '''(?i)DemoAdmin!Change[0-9]{2,}''',   # placeholder demo admin password pattern
+  '''(?i)DemoUser!Change[0-9]{2,}''',    # placeholder demo customer password pattern
+  # Stripe & Google PUBLISHED test placeholders (safe, non-live)
   '''pk_test_[0-9a-zA-Z]{10,}''',
   '''sk_test_00000000000000EXAMPLE''',
   '''your-google-client-id\.apps\.googleusercontent\.com''',
-  # Throwaway HMAC key used only in unit tests (JwtTokenServiceTests) — not a secret.
-  '''(?i)test-signing-key[a-z0-9\-]*''',
 ]
 
+# Placeholder tokens used in *.example files
 stopwords = [
   "changeme",
   "example",

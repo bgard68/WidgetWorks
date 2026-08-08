@@ -1,4 +1,7 @@
-# One-command run: `docker compose up`
+# One-command run: `docker compose up --build`
+#   web  -> http://localhost:3000   (React SPA)
+#   api  -> http://localhost:8080   (API; Scalar UI at /scalar/v1)
+#   db   -> localhost:5432          (Postgres)
 # No secret literals live here — POSTGRES_PASSWORD and Jwt__SigningKey must come from .env
 # (see .env.example). Demo seed passwords default to the documented throwaway values.
 services:
@@ -30,6 +33,11 @@ services:
       Postgres__Username: ${POSTGRES_USER:-widgetworks}
       Postgres__Password: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey in .env}
+      Cors__AllowedOrigins: ${Cors__AllowedOrigins:-http://localhost:3000,http://localhost:5173}
+      App__BaseUrl: ${App__BaseUrl:-http://localhost:3000}
+      Payments__Provider: ${Payments__Provider:-Mock}
+      Email__Provider: ${Email__Provider:-Dev}
+      Google__ClientId: ${Google__ClientId:-}
       Seed__DemoAdminPassword: ${Seed__DemoAdminPassword:-DemoAdmin!Change01}
       Seed__DemoCustomerPassword: ${Seed__DemoCustomerPassword:-DemoUser!Change01}
     ports:
@@ -37,6 +45,19 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        # Public build-time config (client id is public; never a secret).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
 
 volumes:
   pgdata:

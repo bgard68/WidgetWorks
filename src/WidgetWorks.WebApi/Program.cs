@@ -24,6 +24,18 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddOpenApi();
 
+// CORS for the browser SPA (origins from config; sensible localhost defaults for dev).
+const string SpaCorsPolicy = "spa";
+var corsOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "http://localhost:3000,http://localhost:5173")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(SpaCorsPolicy, policy => policy
+        .WithOrigins(corsOrigins)
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
+
 var jwtOptions = new JwtOptions();
 builder.Configuration.GetSection("Jwt").Bind(jwtOptions);
 var keyRing = new JwtKeyRing(jwtOptions);
@@ -87,6 +99,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();   // interactive API UI at /scalar/v1
 }
 
+app.UseCors(SpaCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 

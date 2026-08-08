@@ -1,3 +1,5 @@
+[← Handbook index](README.md) · [Project README](../../README.md)
+
 # 2. Architecture
 
 ## Onion / Clean layering
@@ -45,7 +47,8 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
    (a Dapper transaction; conditional stock UPDATE, rolls back if short).
 4. `IPaymentGateway.ChargeAsync` charges (Mock or Stripe).
 5. On success → mark Paid, clear cart, send the receipt email (best-effort). On decline →
-   release the reservation and mark PaymentFailed.
+   release the reservation and mark PaymentFailed. On an async (BNPL/redirect) authorization →
+   park in **AwaitingPayment** until a provider webhook settles it (see [Payments](05-payments.md)).
 
 ## Security model
 
@@ -69,7 +72,7 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
 
 | Port (Application) | Default adapter (Infrastructure) | Swap for… |
 |---|---|---|
-| `IPaymentGateway` | `MockPaymentGateway` | `StripePaymentGateway` (test) / real PSP |
+| `IPaymentGateway` (+ `IPaymentWebhookParser`) | `MockPaymentGateway` | `StripePaymentGateway` (test) / real PSP |
 | `ITaxCalculator` + `ITaxRateProvider` | state-level rate table | Avalara / TaxJar / Stripe Tax |
 | `IShippingCalculator` | tiered flat-rate | carrier-rate API |
 | `IEmailSender` | Dev (stdout) | SMTP (SendGrid/Mailgun/SES/Mailpit) |

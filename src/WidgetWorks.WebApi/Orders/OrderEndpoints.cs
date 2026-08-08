@@ -1,7 +1,10 @@
 using System.Security.Claims;
+using WidgetWorks.Application.Orders.Admin;
 using WidgetWorks.Application.Orders.GetMine;
 using WidgetWorks.Application.Orders.ListMine;
 using WidgetWorks.Application.Orders.Lookup;
+using WidgetWorks.Application.Orders.UpdateStatus;
+using WidgetWorks.WebApi.Authorization;
 
 namespace WidgetWorks.WebApi.Orders;
 
@@ -39,7 +42,24 @@ public static class OrderEndpoints
             return result.IsSuccess ? Results.Ok(result.Value) : Results.NotFound(new { error = result.Error });
         });
 
+        // Admin/manager order management (ManageCatalog covers widgets, inventory, and orders).
+        var admin = routes.MapGroup("/admin/orders").RequireAuthorization(Policies.ManageCatalog);
+
+        admin.MapGet("/{id:guid}", async (Guid id, GetOrderByIdHandler handler, CancellationToken ct) =>
+        {
+            var result = await handler.Handle(new GetOrderByIdQuery(id), ct);
+            return result.IsSuccess ? Results.Ok(result.Value) : Results.NotFound(new { error = result.Error });
+        });
+
+        admin.MapPost("/{id:guid}/status", async (Guid id, UpdateStatusRequest body, UpdateOrderStatusHandler handler, CancellationToken ct) =>
+        {
+            var result = await handler.Handle(new UpdateOrderStatusCommand(id, body.Status, body.TrackingNumber), ct);
+            return result.IsSuccess ? Results.Ok(result.Value) : Results.BadRequest(new { error = result.Error });
+        });
+
         static Guid? UserId(ClaimsPrincipal principal)
             => Guid.TryParse(principal.FindFirst("sub")?.Value, out var id) ? id : null;
     }
+
+    public sealed record UpdateStatusRequest(string Status, string? TrackingNumber);
 }

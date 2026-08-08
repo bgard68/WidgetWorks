@@ -32,14 +32,16 @@ public class CheckoutTests
         return new Ctx(carts, widgets, orders, widget, cart.Id);
     }
 
-    private static CheckoutHandler Handler(Ctx c, MockPaymentGateway gateway)
-        => new(c.Carts, c.Widgets, c.Orders, new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider()), gateway, Clock());
+    private static CheckoutHandler Handler(Ctx c, MockPaymentGateway gateway, FakeEmailSender email)
+        => new(c.Carts, c.Widgets, c.Orders, new FlatRateShippingCalculator(),
+            new StateSalesTaxCalculator(new StaticStateTaxRateProvider()), gateway, email, Clock());
 
     [Fact]
-    public async Task Successful_checkout_pays_reserves_and_clears_cart()
+    public async Task Successful_checkout_pays_reserves_clears_cart_and_emails_receipt()
     {
         var c = await SetupAsync();
-        var result = await Handler(c, new MockPaymentGateway())
+        var email = new FakeEmailSender();
+        var result = await Handler(c, new MockPaymentGateway(), email)
             .Handle(new CheckoutCommand(c.CartId, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -47,13 +49,14 @@ public class CheckoutTests
         Assert.Equal(2, c.Widgets.Store[c.Widget.Id].QuantityReserved);
         Assert.Null(await c.Carts.GetAsync(c.CartId, CancellationToken.None));
         Assert.Equal(29.19m, result.Value!.Total);   // 20 + 7.74 shipping + 1.45 tax
+        Assert.Contains(email.Sent, m => m.Subject.Contains("received"));
     }
 
     [Fact]
     public async Task Declined_payment_releases_reservation_and_keeps_cart()
     {
         var c = await SetupAsync();
-        var result = await Handler(c, new MockPaymentGateway())
+        var result = await Handler(c, new MockPaymentGateway(), new FakeEmailSender())
             .Handle(new CheckoutCommand(c.CartId, null, "jane@example.com", Address(), "Standard", "decline"), CancellationToken.None);
 
         Assert.True(result.IsFailure);
@@ -68,7 +71,7 @@ public class CheckoutTests
     {
         var c = await SetupAsync(onHand: 5, qty: 5);
         c.Widgets.Store[c.Widget.Id].QuantityReserved = 3;   // only 2 available now
-        var result = await Handler(c, new MockPaymentGateway())
+        var result = await Handler(c, new MockPaymentGateway(), new FakeEmailSender())
             .Handle(new CheckoutCommand(c.CartId, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
 
         Assert.True(result.IsFailure);
@@ -79,7 +82,7 @@ public class CheckoutTests
     public async Task Checkout_requires_valid_email()
     {
         var c = await SetupAsync();
-        var result = await Handler(c, new MockPaymentGateway())
+        var result = await Handler(c, new MockPaymentGateway(), new FakeEmailSender())
             .Handle(new CheckoutCommand(c.CartId, null, "not-an-email", Address(), "Standard", "tok_ok"), CancellationToken.None);
 
         Assert.True(result.IsFailure);
@@ -93,7 +96,7 @@ public class CheckoutTests
         var cart = await carts.CreateAsync(null, CancellationToken.None);
         var orders = new InMemoryOrderRepository(widgets);
         var handler = new CheckoutHandler(carts, widgets, orders, new FlatRateShippingCalculator(),
-            new StateSalesTaxCalculator(new StaticStateTaxRateProvider()), new MockPaymentGateway(), Clock());
+            new StateSalesTaxCalculator(new StaticStateTaxRateProvider()), new MockPaymentGateway(), new FakeEmailSender(), Clock());
 
         var result = await handler.Handle(new CheckoutCommand(cart.Id, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
 

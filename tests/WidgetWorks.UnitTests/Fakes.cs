@@ -219,6 +219,56 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         => Task.FromResult<IReadOnlyList<Order>>(Orders.Where(o => o.UserId == userId).OrderByDescending(o => o.CreatedAt).ToList());
 }
 
+public sealed class InMemoryPasswordResetTokenRepository : IPasswordResetTokenRepository
+{
+    public readonly List<PasswordResetToken> Tokens = new();
+
+    public Task AddAsync(PasswordResetToken token, CancellationToken ct)
+    {
+        Tokens.Add(token);
+        return Task.CompletedTask;
+    }
+
+    public Task<PasswordResetToken?> GetByHashAsync(string tokenHash, CancellationToken ct)
+        => Task.FromResult(Tokens.FirstOrDefault(t => t.TokenHash == tokenHash));
+
+    public Task MarkUsedAsync(Guid id, DateTimeOffset now, CancellationToken ct)
+    {
+        var token = Tokens.FirstOrDefault(t => t.Id == id);
+        if (token is not null)
+        {
+            token.UsedAt = now;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task InvalidateForUserAsync(Guid userId, DateTimeOffset now, CancellationToken ct)
+    {
+        foreach (var token in Tokens.Where(t => t.UserId == userId && t.UsedAt is null))
+        {
+            token.UsedAt = now;
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class FakeSecureTokenGenerator : ISecureTokenGenerator
+{
+    private int _n;
+
+    public string Last { get; private set; } = string.Empty;
+
+    public string Generate()
+    {
+        Last = "reset-token-" + (++_n);
+        return Last;
+    }
+
+    public string Hash(string rawToken) => "hash:" + rawToken;
+}
+
 public sealed class FakeEmailSender : IEmailSender
 {
     public readonly List<EmailMessage> Sent = new();

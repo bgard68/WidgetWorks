@@ -57,10 +57,11 @@ Start at the index, or jump straight to a chapter:
 | 2 | [Architecture](docs/handbook/02-architecture.md) | Onion/clean layering, request flow, security model, seams |
 | 3 | [Setup & run](docs/handbook/03-setup-and-run.md) | Docker + hybrid dev, ports, demo accounts, troubleshooting |
 | 4 | [Configuration, secrets, email & 2FA](docs/handbook/04-configuration-and-2fa.md) | What keys go where/how/why; **email setup**; Google setup; how to set up 2FA |
-| 5 | [Payments & testing cards](docs/handbook/05-payments.md) | Mock + Stripe, async/webhooks, **testing without charging a card**, going live |
+| 5 | [Payments & testing cards](docs/handbook/05-payments.md) | Mock + Stripe, async/webhooks, **testing without charging a card**, sales tax, going live |
 | 6 | [Database & schema](docs/handbook/06-database.md) | Why Postgres, migrations, tables & relationships |
 | 7 | [Testing & smoke test](docs/handbook/07-testing.md) | Unit tests, CI gates, the end-to-end smoke test |
 | 8 | [Bugs & lessons learned](docs/handbook/08-bugs-and-lessons.md) | Real bugs: how found, fixed, prevented |
+| 9 | [Runbook — testing & going live](docs/handbook/09-runbook.md) | **Step-by-step to test email, payments & Google locally, and how to configure each for real** |
 
 Other docs: **[Security policy](SECURITY.md)** · **[Local development notes](docs/local-development.md)** · **[Web app README](web/README.md)** · **[Architecture ADRs](docs/architecture/)**.
 
@@ -116,8 +117,9 @@ pre-commit hooks, and an always-on secret-scan workflow.
 - **SMTP** — real delivery via any provider (SendGrid, Mailgun, SES, Postmark) or a local
   catcher (Mailpit/MailHog) for offline testing; the SMTP password comes from secrets.
 
-Details and the exact keys: **[Payments](docs/handbook/05-payments.md)** and
-**[Configuration → Email](docs/handbook/04-configuration-and-2fa.md)**.
+**Step-by-step to test email / payments / Google locally and to configure each for real:**
+the **[Runbook (ch. 9)](docs/handbook/09-runbook.md)**. Reference detail:
+**[Payments](docs/handbook/05-payments.md)** and **[Configuration → Email](docs/handbook/04-configuration-and-2fa.md)**.
 
 ---
 

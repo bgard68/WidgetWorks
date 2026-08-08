@@ -1,5 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <PropertyGroup>
+    <!-- Enables `dotnet user-secrets` for LOCAL DEV. Secrets are stored outside the repo in the
+         OS user profile (~/.microsoft/usersecrets/<id>/secrets.json) and loaded only in the
+         Development environment. Dev-only by design — never used in production. See
+         docs/local-development.md. -->
+    <UserSecretsId>widgetworks-webapi-3d9a1f7c-2b84-4e15-9c60-8a5f0b2d6e41</UserSecretsId>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="../WidgetWorks.Application/WidgetWorks.Application.csproj" />
     <ProjectReference Include="../WidgetWorks.Infrastructure/WidgetWorks.Infrastructure.csproj" />

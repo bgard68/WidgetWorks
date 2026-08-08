@@ -17,6 +17,7 @@ payments (sync + async/webhook), transactional email, and an order lifecycle.
 6. [Database & schema](06-database.md) — why PostgreSQL, migrations, tables and relationships.
 7. [Testing & smoke test](07-testing.md) — unit tests, CI gates, and how to run the end-to-end smoke test.
 8. [Bugs & lessons learned](08-bugs-and-lessons.md) — real bugs hit, how found, how fixed, how prevented.
+9. [Runbook — testing & going live](09-runbook.md) — step-by-step to test email, payments, and Google locally, and exactly what to change to go live.
 
 ## Related docs
 

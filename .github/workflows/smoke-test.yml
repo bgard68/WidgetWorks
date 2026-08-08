@@ -1,0 +1,65 @@
+name: Smoke test
+
+# End-to-end API smoke test: stand up Postgres + the API with docker compose,
+# wait for /health, then run scripts/smoke-test.ps1. Skipped for docs-only changes.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: API smoke test (end-to-end)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare env (placeholder values are valid for CI)
+        run: cp .env.example .env
+
+      - name: Start database + API
+        run: docker compose up -d --build db api
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 80); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
+              echo "API healthy"; exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::API did not become healthy in time"
+          docker compose logs api
+          exit 1
+
+      - name: Run smoke test (PowerShell)
+        shell: pwsh
+        run: ./scripts/smoke-test.ps1 -BaseUrl http://localhost:8080
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using WidgetWorks.Application.Auth.Google;
 using WidgetWorks.Application.Auth.Login;
 using WidgetWorks.Application.Auth.Logout;
 using WidgetWorks.Application.Auth.PasswordReset;
@@ -37,6 +38,7 @@ public static class DependencyInjection
     {
         services.AddScoped<RegisterHandler>();
         services.AddScoped<LoginHandler>();
+        services.AddScoped<GoogleLoginHandler>();
         services.AddScoped<RefreshHandler>();
         services.AddScoped<LogoutHandler>();
         services.AddScoped<RequestPasswordResetHandler>();

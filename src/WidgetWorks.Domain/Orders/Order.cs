@@ -3,6 +3,13 @@ namespace WidgetWorks.Domain.Orders;
 public static class OrderStatus
 {
     public const string Pending = "Pending";
+
+    /// <summary>
+    /// Order placed and stock reserved, but payment is settling asynchronously
+    /// (a redirect/BNPL method). A provider webhook moves it to Paid or PaymentFailed.
+    /// </summary>
+    public const string AwaitingPayment = "AwaitingPayment";
+
     public const string Paid = "Paid";
     public const string PaymentFailed = "PaymentFailed";
     public const string Shipped = "Shipped";

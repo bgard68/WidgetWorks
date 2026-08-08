@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using WidgetWorks.Application;
 using WidgetWorks.Application.Abstractions;
@@ -16,7 +17,7 @@ namespace WidgetWorks.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit, 2FA, catalog, cart, pricing, orders, payments, email.</summary>
+    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit, 2FA, catalog, cart, pricing, orders, payments, email, Google.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Dapper maps snake_case columns to PascalCase properties.
@@ -24,6 +25,9 @@ public static class DependencyInjection
 
         // Deterministic, testable time everywhere — never DateTime.Now.
         services.AddSingleton(TimeProvider.System);
+
+        // Shared HttpClient for outbound calls (Stripe, Google JWKS).
+        services.TryAddSingleton<HttpClient>();
 
         var connectionString = BuildConnectionString(configuration);
         services.AddSingleton<IDbConnectionFactory>(new NpgsqlConnectionFactory(connectionString));
@@ -38,6 +42,10 @@ public static class DependencyInjection
         configuration.GetSection("App").Bind(appOptions);
         services.AddSingleton(appOptions);
 
+        var googleOptions = new GoogleOptions();
+        configuration.GetSection("Google").Bind(googleOptions);
+        services.AddSingleton(googleOptions);
+
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
@@ -50,6 +58,7 @@ public static class DependencyInjection
         services.AddSingleton<ITotpService, TotpService>();
         services.AddSingleton<IRecoveryCodes, RecoveryCodeService>();
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
+        services.AddSingleton<IGoogleTokenValidator, GoogleTokenValidator>();
         services.AddSingleton<IShippingCalculator, FlatRateShippingCalculator>();
         services.AddSingleton<ITaxRateProvider, StaticStateTaxRateProvider>();
         services.AddSingleton<ITaxCalculator, StateSalesTaxCalculator>();
@@ -61,7 +70,6 @@ public static class DependencyInjection
         if (string.Equals(paymentsProvider, "Stripe", StringComparison.OrdinalIgnoreCase))
         {
             services.Configure<StripeOptions>(configuration.GetSection("Payments:Stripe"));
-            services.AddSingleton<HttpClient>();
             services.AddScoped<IPaymentGateway, StripePaymentGateway>();
         }
         else

@@ -1,3 +1,4 @@
+using WidgetWorks.Application.Auth.Google;
 using WidgetWorks.Application.Auth.Login;
 using WidgetWorks.Application.Auth.Logout;
 using WidgetWorks.Application.Auth.PasswordReset;
@@ -15,6 +16,8 @@ public sealed record RecoveryLoginRequest(string ChallengeToken, string Recovery
 public sealed record ForgotPasswordRequest(string Email);
 
 public sealed record ResetPasswordRequest(string Token, string NewPassword);
+
+public sealed record GoogleLoginRequest(string IdToken);
 
 public static class AuthEndpoints
 {
@@ -42,6 +45,14 @@ public static class AuthEndpoints
             return login.RequiresTwoFactor
                 ? Results.Ok(new { twoFactorRequired = true, challengeToken = login.ChallengeToken })
                 : Results.Ok(login.Tokens);
+        });
+
+        group.MapPost("/google", async (GoogleLoginRequest body, GoogleLoginHandler handler, CancellationToken ct) =>
+        {
+            var result = await handler.Handle(new GoogleLoginCommand(body.IdToken), ct);
+            return result.IsSuccess
+                ? Results.Ok(result.Value)
+                : Results.Json(new { error = result.Error }, statusCode: StatusCodes.Status401Unauthorized);
         });
 
         group.MapPost("/2fa", async (TwoFactorLoginRequest body, TwoFactorLoginHandler handler, CancellationToken ct) =>

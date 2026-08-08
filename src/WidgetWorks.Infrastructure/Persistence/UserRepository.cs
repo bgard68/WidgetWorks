@@ -25,6 +25,14 @@ public sealed class UserRepository(IDbConnectionFactory factory) : IUserReposito
             new { id });
     }
 
+    public async Task<User?> GetByGoogleSubAsync(string googleSub, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        return await db.QuerySingleOrDefaultAsync<User>(
+            $"select {Columns} from users where google_sub = @googleSub",
+            new { googleSub });
+    }
+
     public async Task AddAsync(User user, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);

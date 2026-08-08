@@ -53,6 +53,24 @@ public class CheckoutTests
     }
 
     [Fact]
+    public async Task Async_payment_parks_order_awaiting_payment_reserves_and_clears_cart()
+    {
+        var c = await SetupAsync();
+        var email = new FakeEmailSender();
+        var result = await Handler(c, new MockPaymentGateway(), email)
+            .Handle(new CheckoutCommand(c.CartId, null, "jane@example.com", Address(), "Standard", "klarna_demo"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OrderStatus.AwaitingPayment, result.Value!.Status);
+        Assert.False(string.IsNullOrEmpty(result.Value!.PaymentReference));   // reference persisted for the webhook
+        Assert.Equal(2, c.Widgets.Store[c.Widget.Id].QuantityReserved);       // reservation held
+        Assert.Null(await c.Carts.GetAsync(c.CartId, CancellationToken.None)); // cart cleared
+        Assert.Empty(email.Sent);                                             // no receipt until settled
+        Assert.Single(c.Orders.Orders);
+        Assert.Equal(OrderStatus.AwaitingPayment, c.Orders.Orders[0].Status);
+    }
+
+    [Fact]
     public async Task Declined_payment_releases_reservation_and_keeps_cart()
     {
         var c = await SetupAsync();

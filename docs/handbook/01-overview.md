@@ -1,3 +1,5 @@
+[← Handbook index](README.md) · [Project README](../../README.md)
+
 # 1. Overview
 
 **WidgetWorks** is an end-to-end online store that sells “widgets.” It is a portfolio

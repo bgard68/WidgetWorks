@@ -1,3 +1,5 @@
+[← Handbook index](README.md) · [Project README](../../README.md)
+
 # 7. Testing & the smoke test
 
 Two layers: fast **unit tests** (logic, no I/O) and an **end-to-end smoke test**
@@ -17,7 +19,8 @@ they’re deterministic and need no database. Coverage includes:
 - Cart — cap-at-available, accumulate, update-to-zero, guest→user merge.
 - Pricing — per-state tax (known / 0% / unknown), shipping tiers, quote pipeline.
 - Checkout — success (pay + reserve + clear cart), decline (release + keep cart),
-  insufficient stock, validation.
+  async pending (park in AwaitingPayment), insufficient stock, validation.
+- Payments — async settlement (webhook → Paid / PaymentFailed, idempotent, unknown ref).
 - Orders — lifecycle transitions (Paid→Shipped→Delivered / Cancelled).
 
 Run them:
@@ -33,9 +36,10 @@ CI runs `dotnet build -warnaserror` then `dotnet test` on every code change (see
 `scripts/smoke-test.ps1` drives the **running API** over HTTP and checks real responses.
 It covers: health & catalog; register / login / refresh / logout; **real TOTP 2FA**
 (enroll → confirm → challenge login → recovery code); cart → quote → checkout (mock
-success) → admin fulfillment (ship / deliver) → guest order lookup; **Google sign-in with
-a fake credential (must 401)**; and failure conditions (404 / 401 / 403 / 400, payment
-decline, no-enumeration forgot-password).
+success) → admin fulfillment (ship / deliver) → guest order lookup; **asynchronous payment**
+(AwaitingPayment → webhook → Paid/PaymentFailed) with its 404/400/ack guardrails;
+**Google sign-in with a fake credential (must 401)**; and failure conditions (404 / 401 /
+403 / 400, payment decline, no-enumeration forgot-password).
 
 ### Run it locally
 
@@ -63,7 +67,7 @@ Sample:
   [PASS] login returns 200 with tokens
   ...
 == Summary ==
-  Passed: 34 / 34
+  Passed: 45 / 45
   All checks passed.
 ```
 

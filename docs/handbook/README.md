@@ -1,9 +1,11 @@
+[← Project README](../../README.md)
+
 # WidgetWorks Handbook
 
 A production-shaped, end-to-end online widget store built as a portfolio showcase:
 **.NET 10 (Minimal API, Dapper, PostgreSQL) + React/TypeScript SPA**, with real auth,
 2FA, token rotation, catalog/inventory, cart, per-state tax, checkout with pluggable
-payments, transactional email, and an order lifecycle.
+payments (sync + async/webhook), transactional email, and an order lifecycle.
 
 ## Contents
 
@@ -11,9 +13,15 @@ payments, transactional email, and an order lifecycle.
 2. [Architecture](02-architecture.md) — onion/clean layering, request flow, security model, seams.
 3. [Setup & run](03-setup-and-run.md) — one-command Docker, hybrid dev, URLs, demo accounts.
 4. [Configuration, secrets, email & 2FA](04-configuration-and-2fa.md) — what keys go where/how/why; email + Google setup; how to set up 2FA.
-5. [Payments & testing credit cards](05-payments.md) — Mock + Stripe test mode, how checkout charges, test cards.
+5. [Payments & testing credit cards](05-payments.md) — Mock + Stripe test mode, async/webhooks, testing without charging a card, going live.
 6. [Database & schema](06-database.md) — why PostgreSQL, migrations, tables and relationships.
 7. [Testing & smoke test](07-testing.md) — unit tests, CI gates, and how to run the end-to-end smoke test.
 8. [Bugs & lessons learned](08-bugs-and-lessons.md) — real bugs hit, how found, how fixed, how prevented.
 
-> Architecture decision records (ADRs) live alongside these docs in [`docs/architecture/`](../architecture/).
+## Related docs
+
+- [Project README](../../README.md) — quick start + the documentation hub.
+- [Security policy](../../SECURITY.md) — what's never committed and how it's enforced.
+- [Local development notes](../local-development.md) — deeper dev-workflow detail.
+- [Web app README](../../web/README.md) — the React/TypeScript SPA.
+- [Architecture ADRs](../architecture/) — decision records behind the design.

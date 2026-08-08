@@ -1,3 +1,5 @@
+[← Handbook index](README.md) · [Project README](../../README.md)
+
 # 3. Setup & run
 
 ## Option A — one command (Docker)

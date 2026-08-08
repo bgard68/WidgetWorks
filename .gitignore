@@ -147,6 +147,33 @@ coverage/
 TestResults*.xml
 
 ############################
+# Compiled binaries & build outputs  🧱
+# Source-only repo — compiled output is never committed. These extension rules
+# back up the bin/ and obj/ directory ignores above (belt-and-suspenders).
+############################
+*.dll
+*.exe
+*.pdb
+*.obj
+*.bin
+*.nupkg
+*.snupkg
+[Pp]ublish/
+**/[Pp]ublish/
+app.publish/
+
+############################
+# Archives                 📦  (build/release bundles — don't commit)
+############################
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.rar
+
+############################
 # Node / React (Vite) front end
 ############################
 node_modules/

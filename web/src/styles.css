@@ -122,3 +122,17 @@ input,select{padding:10px;border:1px solid var(--line);border-radius:9px;font-si
   .nav{flex-wrap:wrap}
   .searchbar{order:3;flex-basis:100%}
 }
+
+/* payment method selector (checkout) */
+.paylabel{font-size:.85rem;font-weight:600;color:#374151}
+.paymethods{display:flex;flex-direction:column;gap:10px}
+.paymethod{display:flex;flex-direction:row;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff;font-weight:400;transition:border-color .12s,box-shadow .12s}
+.paymethod:hover{border-color:var(--brand)}
+.paymethod.on{border-color:var(--brand);box-shadow:0 0 0 2px rgba(79,70,229,.15)}
+.paymethod .pm-ico{font-size:1.4rem;width:30px;text-align:center;flex:0 0 auto}
+.paymethod .pm-text{display:flex;flex-direction:column;gap:2px}
+.paymethod .pm-main{font-weight:650}
+.paymethod .pm-sub{font-size:.8rem;color:var(--muted)}
+.paymethod input{margin-left:auto;flex:0 0 auto}
+.paypending{border:1px dashed var(--line);border-radius:12px;padding:14px;margin:12px 0;background:#fbfbfe}
+.paypending .row{gap:14px;align-items:center}

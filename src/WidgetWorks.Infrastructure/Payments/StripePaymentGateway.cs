@@ -10,13 +10,19 @@ public sealed class StripeOptions
 {
     public string SecretKey { get; set; } = string.Empty;
 
+    /// <summary>Webhook signing secret (whsec_...). Required only if the Stripe webhook is used.</summary>
+    public string WebhookSecret { get; set; } = string.Empty;
+
     public string ApiBase { get; set; } = "https://api.stripe.com";
 }
 
 /// <summary>
 /// Stripe test-mode adapter. Creates and confirms a PaymentIntent via Stripe's REST API using an
-/// HttpClient (no SDK dependency). The secret key comes only from configuration / user-secrets and is
-/// never committed. Selected by config (Payments:Provider = Stripe); the Mock gateway is the default.
+/// HttpClient (no SDK dependency). A card charge settles synchronously (status "succeeded"); a redirect
+/// or BNPL method returns "requires_action"/"processing", which maps to Pending — the order parks in
+/// AwaitingPayment until the Stripe webhook (payment_intent.succeeded/…payment_failed) settles it.
+/// The secret key comes only from configuration / user-secrets and is never committed. Selected by
+/// config (Payments:Provider = Stripe); the Mock gateway is the default.
 /// </summary>
 public sealed class StripePaymentGateway(HttpClient http, IOptions<StripeOptions> options) : IPaymentGateway
 {
@@ -43,6 +49,8 @@ public sealed class StripePaymentGateway(HttpClient http, IOptions<StripeOptions
             ["confirm"] = "true",
             ["payment_method"] = string.IsNullOrWhiteSpace(request.PaymentToken) ? "pm_card_visa" : request.PaymentToken!,
             ["description"] = $"WidgetWorks order {request.OrderNumber}",
+            // Correlate the eventual webhook back to our order.
+            ["metadata[order_number]"] = request.OrderNumber,
             ["automatic_payment_methods[enabled]"] = "true",
             ["automatic_payment_methods[allow_redirects]"] = "never",
         };
@@ -64,8 +72,36 @@ public sealed class StripePaymentGateway(HttpClient http, IOptions<StripeOptions
         var root = doc.RootElement;
         var status = root.TryGetProperty("status", out var s) ? s.GetString() : null;
         var id = root.TryGetProperty("id", out var i) ? i.GetString() : null;
-        return string.Equals(status, "succeeded", StringComparison.Ordinal)
-            ? PaymentResult.Ok(Name, id ?? "unknown")
-            : PaymentResult.Declined(Name, $"Payment not completed (status: {status}).");
+        var reference = id ?? "unknown";
+
+        switch (status)
+        {
+            case "succeeded":
+                return PaymentResult.Ok(Name, reference);
+
+            case "requires_action":
+            case "requires_confirmation":
+            case "processing":
+                var clientSecret = root.TryGetProperty("client_secret", out var cs) ? cs.GetString() : null;
+                return PaymentResult.Pending(Name, reference, clientSecret, ExtractRedirectUrl(root));
+
+            default:
+                return PaymentResult.Declined(Name, $"Payment not completed (status: {status}).");
+        }
+    }
+
+    /// <summary>Pulls next_action.redirect_to_url.url from a PaymentIntent, if present.</summary>
+    private static string? ExtractRedirectUrl(JsonElement intent)
+    {
+        if (intent.TryGetProperty("next_action", out var nextAction) &&
+            nextAction.ValueKind == JsonValueKind.Object &&
+            nextAction.TryGetProperty("redirect_to_url", out var redirect) &&
+            redirect.ValueKind == JsonValueKind.Object &&
+            redirect.TryGetProperty("url", out var url))
+        {
+            return url.GetString();
+        }
+
+        return null;
     }
 }

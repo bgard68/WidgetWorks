@@ -176,6 +176,16 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         return Task.FromResult(true);
     }
 
+    public Task MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    {
+        var order = Orders.First(o => o.Id == orderId);
+        order.Status = OrderStatus.AwaitingPayment;
+        order.PaymentProvider = provider;
+        order.PaymentReference = reference;
+        order.UpdatedAt = now;
+        return Task.CompletedTask;
+    }
+
     public Task MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
     {
         var order = Orders.First(o => o.Id == orderId);
@@ -213,6 +223,9 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
 
     public Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
         => Task.FromResult(Orders.FirstOrDefault(o => o.Id == id));
+
+    public Task<Order?> GetByPaymentReferenceAsync(string provider, string reference, CancellationToken ct)
+        => Task.FromResult(Orders.FirstOrDefault(o => o.PaymentProvider == provider && o.PaymentReference == reference));
 
     public Task<Order?> GetByNumberAndEmailAsync(string orderNumber, string email, CancellationToken ct)
         => Task.FromResult(Orders.FirstOrDefault(o =>

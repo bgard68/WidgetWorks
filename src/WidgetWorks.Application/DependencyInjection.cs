@@ -15,6 +15,7 @@ using WidgetWorks.Application.Catalog.Create;
 using WidgetWorks.Application.Catalog.Detail;
 using WidgetWorks.Application.Catalog.Inventory;
 using WidgetWorks.Application.Catalog.Update;
+using WidgetWorks.Application.Checkout.ConfirmPayment;
 using WidgetWorks.Application.Checkout.PlaceOrder;
 using WidgetWorks.Application.Checkout.Quote;
 using WidgetWorks.Application.Orders.Admin;
@@ -61,6 +62,7 @@ public static class DependencyInjection
         services.AddScoped<MergeCartHandler>();
         services.AddScoped<QuoteCartHandler>();
         services.AddScoped<CheckoutHandler>();
+        services.AddScoped<ConfirmPaymentHandler>();
         services.AddScoped<GuestOrderLookupHandler>();
         services.AddScoped<ListMyOrdersHandler>();
         services.AddScoped<GetMyOrderHandler>();

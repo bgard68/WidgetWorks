@@ -5,7 +5,8 @@
 .DESCRIPTION
     Exercises the running API across catalog, auth (register/login/refresh/logout),
     2FA (real TOTP enroll -> confirm -> challenge), cart, checkout (mock payment
-    success + decline), admin catalog + order-status transitions, guest order
+    success + decline), asynchronous payment (AwaitingPayment -> provider webhook
+    -> Paid/PaymentFailed), admin catalog + order-status transitions, guest order
     lookup, Google sign-in with a fake credential, and a battery of failure
     conditions (401 / 403 / 404 / 400). Prints PASS/FAIL per check and exits
     non-zero if anything failed.
@@ -322,6 +323,77 @@ if ($widget) {
 if ($orderNumber) {
     $lookup = Invoke-Api GET ("/orders/lookup?number=$([uri]::EscapeDataString($orderNumber))&email=$([uri]::EscapeDataString($orderEmail))")
     Check 'guest order lookup returns 200' ($lookup.Status -eq 200 -and $lookup.Body.orderNumber -eq $orderNumber)
+}
+
+# --- Async payment: AwaitingPayment -> webhook -> Paid / PaymentFailed -------
+# A "klarna" token drives the mock gateway down its asynchronous (BNPL/redirect)
+# path: checkout parks the order in AwaitingPayment and a provider webhook settles
+# it. This exercises the same plumbing a real Stripe/BNPL or PayPal/Venmo adapter
+# would use.
+Section 'Async payment (AwaitingPayment -> webhook -> settled)'
+if ($newWidgetId) {
+    # ---- success path ----
+    $aCart = Invoke-Api POST '/cart/items' @{ cartId = $null; widgetId = $newWidgetId; quantity = 1 }
+    if ($aCart.Body.id) {
+        $aEmail = New-Email
+        $aChk = Invoke-Api POST '/checkout' @{
+            cartId = $aCart.Body.id; email = $aEmail; name = 'Async Tester'; line1 = '1 Main St'; line2 = $null
+            city = 'Springfield'; state = 'CA'; postalCode = '90001'; country = 'US'
+            shippingMethod = 'Standard'; paymentToken = 'klarna_demo'
+        }
+        Check 'async checkout returns 200 AwaitingPayment' ($aChk.Status -eq 200 -and $aChk.Body.status -eq 'AwaitingPayment') "status=$($aChk.Status) orderStatus=$($aChk.Body.status)"
+        $aRef = $aChk.Body.paymentReference
+        $aOrderId = $aChk.Body.orderId
+        Check 'async checkout returned a payment reference' ([bool]$aRef)
+
+        if ($aOrderId) {
+            $aView = Invoke-Api GET "/admin/orders/$aOrderId" $null $adminToken
+            Check 'awaiting order is visible to admin as AwaitingPayment' ($aView.Status -eq 200 -and $aView.Body.status -eq 'AwaitingPayment')
+
+            $tooEarly = Invoke-Api POST "/admin/orders/$aOrderId/status" @{ status = 'Shipped'; trackingNumber = $null } $adminToken
+            Check 'cannot ship an order that has not been paid (400)' ($tooEarly.Status -eq 400)
+
+            $wh = Invoke-Api POST '/webhooks/payments/mock' @{ reference = $aRef; outcome = 'succeeded' }
+            Check 'payment webhook (succeeded) returns 200' ($wh.Status -eq 200) "status=$($wh.Status)"
+
+            $aPaid = Invoke-Api GET "/admin/orders/$aOrderId" $null $adminToken
+            Check 'order transitions AwaitingPayment -> Paid after webhook' ($aPaid.Status -eq 200 -and $aPaid.Body.status -eq 'Paid') "orderStatus=$($aPaid.Body.status)"
+
+            # Idempotency: a duplicate delivery must not change a settled order.
+            [void](Invoke-Api POST '/webhooks/payments/mock' @{ reference = $aRef; outcome = 'succeeded' })
+            $aPaid2 = Invoke-Api GET "/admin/orders/$aOrderId" $null $adminToken
+            Check 'duplicate webhook is idempotent (still Paid)' ($aPaid2.Body.status -eq 'Paid')
+        }
+    }
+
+    # ---- failure path ----
+    $fCart = Invoke-Api POST '/cart/items' @{ cartId = $null; widgetId = $newWidgetId; quantity = 1 }
+    if ($fCart.Body.id) {
+        $fChk = Invoke-Api POST '/checkout' @{
+            cartId = $fCart.Body.id; email = (New-Email); name = 'Async Fail'; line1 = '1 Main St'; line2 = $null
+            city = 'Springfield'; state = 'CA'; postalCode = '90001'; country = 'US'
+            shippingMethod = 'Standard'; paymentToken = 'klarna_demo'
+        }
+        Check 'second async checkout is AwaitingPayment' ($fChk.Body.status -eq 'AwaitingPayment')
+        $fRef = $fChk.Body.paymentReference
+        $fOrderId = $fChk.Body.orderId
+        if ($fOrderId) {
+            $whf = Invoke-Api POST '/webhooks/payments/mock' @{ reference = $fRef; outcome = 'failed' }
+            Check 'payment webhook (failed) returns 200' ($whf.Status -eq 200)
+            $fView = Invoke-Api GET "/admin/orders/$fOrderId" $null $adminToken
+            Check 'order transitions AwaitingPayment -> PaymentFailed after failed webhook' ($fView.Body.status -eq 'PaymentFailed') "orderStatus=$($fView.Body.status)"
+        }
+    }
+
+    # ---- webhook guardrails ----
+    $whUnknown = Invoke-Api POST '/webhooks/payments/mock' @{ reference = 'mock_pi_does_not_exist'; outcome = 'succeeded' }
+    Check 'webhook with unknown reference is acknowledged (200)' ($whUnknown.Status -eq 200)
+
+    $whBad = Invoke-Api POST '/webhooks/payments/mock' @{ nope = 'x' }
+    Check 'webhook missing a reference returns 400' ($whBad.Status -eq 400)
+
+    $whProv = Invoke-Api POST '/webhooks/payments/does-not-exist' @{ reference = 'x'; outcome = 'succeeded' }
+    Check 'webhook for an unknown provider returns 404' ($whProv.Status -eq 404)
 }
 
 # --- Failure conditions -----------------------------------------------------

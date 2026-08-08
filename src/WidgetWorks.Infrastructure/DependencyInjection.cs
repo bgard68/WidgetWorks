@@ -66,15 +66,19 @@ public static class DependencyInjection
         services.AddScoped<DbSeeder>();
 
         // Payments: Mock by default; Stripe test-mode adapter selected by config (secret never committed).
+        // Each provider registers its matching webhook parser so async settlement can be finalized.
         var paymentsProvider = configuration["Payments:Provider"] ?? "Mock";
         if (string.Equals(paymentsProvider, "Stripe", StringComparison.OrdinalIgnoreCase))
         {
             services.Configure<StripeOptions>(configuration.GetSection("Payments:Stripe"));
             services.AddScoped<IPaymentGateway, StripePaymentGateway>();
+            services.AddScoped<IPaymentWebhookParser, StripePaymentWebhookParser>();
         }
         else
         {
+            services.Configure<MockPaymentOptions>(configuration.GetSection("Payments:Mock"));
             services.AddScoped<IPaymentGateway, MockPaymentGateway>();
+            services.AddScoped<IPaymentWebhookParser, MockPaymentWebhookParser>();
         }
 
         // Email: Dev sender (logs to stdout) by default; real SMTP selected by config (secret never committed).

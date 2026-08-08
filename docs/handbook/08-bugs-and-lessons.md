@@ -1,3 +1,5 @@
+[← Handbook index](README.md) · [Project README](../../README.md)
+
 # 8. Bugs & lessons learned
 
 Real issues hit while building this, how each was found, fixed, and prevented. A recurring
@@ -18,6 +20,8 @@ the discipline below load-bearing rather than optional.
 | 7 | `git push` rejected (non-fast-forward) | pushing a branch | `main` moved (a parallel edit to `ci.yml`) while the branch rewrote the same file | `git merge -X ours origin/main` to keep the branch’s CI, then push | Rebase/merge before pushing; keep unrelated changes in separate PRs |
 | 8 | “localhost:3000 refused to connect” | opening the browser | The stack wasn’t running yet (build unfinished / not started) | Wait for `docker compose ps` to show all services up before opening | Poll `/health` (the smoke pipeline does exactly this) |
 | 9 | Couldn’t create an “empty” initial commit remotely | pushing via API | The sandbox git proxy blocked pushes; an empty tree is invalid | Create the repo’s first commit locally | Know your tooling’s limits; script the repeatable path |
+| 10 | Always-on gitleaks failed on a green repo | CI (Secret scan) | Splitting gitleaks into a full-history scan surfaced test JWT keys after an edit dropped the `test-signing-key` allowlist | Restore the dropped allowlist + email rules in `.gitleaks.toml` | Reproduce the exact scan locally before changing scanner scope; a whole-history scan is stricter than a PR-diff one |
+| 11 | `dotnet run` ignored user-secrets (empty signing key) | running the API on the host | No `launchSettings.json`, so `dotnet run` started in **Production**, where user-secrets aren’t loaded; it also bound `:5000` not `:5080` | Add `Properties/launchSettings.json` pinning Development + `http://localhost:5080` | Commit a run profile so `dotnet run` is deterministic; env vars always load, user-secrets only in Development |
 
 ## Lessons learned
 
@@ -27,13 +31,14 @@ the discipline below load-bearing rather than optional.
 - **Program to seams (ports & adapters).** Payments, tax, shipping, email, and Google auth
   are interfaces with swappable implementations. It kept `CheckoutHandler` stable while
   Mock↔Stripe, table↔tax-service, and Dev↔SMTP were interchangeable — and made everything
-  unit-testable.
+  unit-testable. The async payment path (AwaitingPayment → webhook) later slotted in behind
+  the same seam without touching checkout’s core.
 - **Inject time.** `TimeProvider` everywhere made lockout windows, token expiry, and TOTP
   deterministic in tests instead of `Thread.Sleep`-flaky.
 - **Defense in depth for invariants.** The immutable admin is enforced in the domain
   **and** by a database trigger — a bug or a direct SQL write still can’t violate it.
-- **Never trust the client for money.** Totals are recomputed server-side at checkout;
-  the browser’s numbers are display-only.
+- **Never trust the client for money.** Totals — subtotal, shipping, and per-state tax — are
+  recomputed server-side at checkout; the browser’s numbers are display-only.
 - **Secrets discipline pays off.** `.gitignore` + `.gitleaks.toml` + an always-on secret
   scan meant “no secret in the repo” was enforced, not aspirational — and the one allowed
   exception (documented demo creds) is explicit.
@@ -41,5 +46,6 @@ the discipline below load-bearing rather than optional.
   journaled and run once. Startup is safe to repeat.
 - **Soft-delete over hard-delete** for catalog: hiding a widget (`is_active=false`) keeps
   order history intact.
-- **Config must match the code that binds it.** A mismatched example key is a silent
+- **Config must match the code that binds it, and the run profile must match the docs.** A
+  mismatched example key — or a missing `launchSettings.json` — is a silent
   misconfiguration; keep them in lockstep and smoke-test the wired providers.

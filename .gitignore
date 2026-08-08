@@ -80,6 +80,14 @@ transcripts/
 .ai-logs/
 
 ############################
+# Local dev tooling (downloaded binaries)
+############################
+gitleaks-bin/
+gitleaks
+gitleaks.exe
+.tools/
+
+############################
 # Azure / IaC exports      ☁️
 # Exports must NOT land in the repo. The retrieval
 # script (scripts/**) is explicitly re-included below.

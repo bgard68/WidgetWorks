@@ -16,12 +16,21 @@ public sealed record CheckoutCommand(
     string? ShippingMethod,
     string? PaymentToken);
 
-public sealed record CheckoutResult(string OrderNumber, Guid OrderId, string Status, decimal Total, string PaymentProvider, string PaymentReference);
+public sealed record CheckoutResult(
+    string OrderNumber,
+    Guid OrderId,
+    string Status,
+    decimal Total,
+    string PaymentProvider,
+    string PaymentReference,
+    string? ClientSecret = null,
+    string? NextActionUrl = null);
 
 /// <summary>
 /// Places an order: re-prices the cart server-side (never trusting client totals), reserves stock and
-/// persists a pending order atomically, charges the payment gateway, then finalizes -- releasing the
-/// reservation if payment fails and clearing the cart plus emailing a receipt if it succeeds.
+/// persists a pending order atomically, then authorizes payment. A synchronous success finalizes
+/// immediately (clears the cart, emails a receipt); a decline releases the reservation; an asynchronous
+/// authorization parks the order in AwaitingPayment until a provider webhook settles it.
 /// </summary>
 public sealed class CheckoutHandler(
     ICartRepository carts,
@@ -115,13 +124,29 @@ public sealed class CheckoutHandler(
         var payment = await payments.ChargeAsync(
             new PaymentRequest(order.OrderNumber, order.Total, "usd", order.Email, command.PaymentToken), ct);
 
-        if (!payment.Success)
+        if (payment.Status == PaymentStatus.Declined)
         {
             await orders.MarkPaymentFailedAsync(order, payment.Error ?? "Payment failed.", clock.GetUtcNow(), ct);
             return Fail(payment.Error ?? "Payment failed.");
         }
 
-        await orders.MarkPaidAsync(order.Id, payment.Provider, payment.Reference ?? string.Empty, clock.GetUtcNow(), ct);
+        var reference = payment.Reference ?? string.Empty;
+
+        if (payment.Status == PaymentStatus.Pending)
+        {
+            // Async settlement (redirect/BNPL): keep the reservation, park the order, and let the
+            // provider webhook finalize it. The receipt email is sent on confirmation, not here.
+            await orders.MarkAwaitingPaymentAsync(order.Id, payment.Provider, reference, clock.GetUtcNow(), ct);
+            order.Status = OrderStatus.AwaitingPayment;
+            await carts.DeleteAsync(cart.Id, ct);
+
+            return Result<CheckoutResult>.Success(new CheckoutResult(
+                order.OrderNumber, order.Id, OrderStatus.AwaitingPayment, order.Total,
+                payment.Provider, reference, payment.ClientSecret, payment.NextActionUrl));
+        }
+
+        // Synchronous success.
+        await orders.MarkPaidAsync(order.Id, payment.Provider, reference, clock.GetUtcNow(), ct);
         order.Status = OrderStatus.Paid;
         await carts.DeleteAsync(cart.Id, ct);
 
@@ -135,6 +160,6 @@ public sealed class CheckoutHandler(
         }
 
         return Result<CheckoutResult>.Success(new CheckoutResult(
-            order.OrderNumber, order.Id, OrderStatus.Paid, order.Total, payment.Provider, payment.Reference ?? string.Empty));
+            order.OrderNumber, order.Id, OrderStatus.Paid, order.Total, payment.Provider, reference));
     }
 }

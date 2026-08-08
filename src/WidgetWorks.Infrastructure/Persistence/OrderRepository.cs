@@ -59,6 +59,14 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         }
     }
 
+    public async Task MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        await db.ExecuteAsync(
+            "update orders set status = @Status, payment_provider = @Provider, payment_reference = @Reference, updated_at = @Now where id = @Id",
+            new { Id = orderId, Status = OrderStatus.AwaitingPayment, Provider = provider, Reference = reference, Now = now });
+    }
+
     public async Task MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
@@ -113,6 +121,22 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
 
         order.Items = (await db.QueryAsync<OrderItem>(
             $"select {ItemColumns} from order_items where order_id = @id order by name", new { id })).ToList();
+        return order;
+    }
+
+    public async Task<Order?> GetByPaymentReferenceAsync(string provider, string reference, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        var order = await db.QuerySingleOrDefaultAsync<Order>(
+            $"select {OrderColumns} from orders where payment_provider = @provider and payment_reference = @reference",
+            new { provider, reference });
+        if (order is null)
+        {
+            return null;
+        }
+
+        order.Items = (await db.QueryAsync<OrderItem>(
+            $"select {ItemColumns} from order_items where order_id = @id order by name", new { id = order.Id })).ToList();
         return order;
     }
 

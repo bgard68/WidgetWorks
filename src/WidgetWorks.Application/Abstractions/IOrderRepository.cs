@@ -7,6 +7,9 @@ public interface IOrderRepository
     /// <summary>Atomically inserts the order and reserves stock. Returns false (rolled back) if any line is short.</summary>
     Task<bool> TryPlaceAsync(Order order, CancellationToken ct);
 
+    /// <summary>Records the provider + reference and parks the order in AwaitingPayment (async settlement).</summary>
+    Task MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct);
+
     Task MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct);
 
     /// <summary>Marks the order failed and releases its inventory reservations.</summary>
@@ -15,6 +18,9 @@ public interface IOrderRepository
     Task UpdateStatusAsync(Guid orderId, string status, string? trackingNumber, DateTimeOffset now, CancellationToken ct);
 
     Task<Order?> GetByIdAsync(Guid id, CancellationToken ct);
+
+    /// <summary>Finds an order by the payment provider + reference stored at authorization time (webhook correlation).</summary>
+    Task<Order?> GetByPaymentReferenceAsync(string provider, string reference, CancellationToken ct);
 
     Task<Order?> GetByNumberAndEmailAsync(string orderNumber, string email, CancellationToken ct);
 

@@ -7,7 +7,7 @@ namespace WidgetWorks.Infrastructure.Persistence;
 public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderRepository
 {
     private const string OrderColumns =
-        "id, order_number, user_id, email, ship_name, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country, subtotal, shipping_method, shipping, tax_state, tax_rate, tax, total, status, payment_provider, payment_reference, created_at, updated_at";
+        "id, order_number, user_id, email, ship_name, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country, subtotal, shipping_method, shipping, tax_state, tax_rate, tax, total, status, payment_provider, payment_reference, tracking_number, created_at, updated_at";
 
     private const string ItemColumns =
         "id, order_id, widget_id, sku, name, unit_price, quantity, line_subtotal";
@@ -91,6 +91,14 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
             tx.Rollback();
             throw;
         }
+    }
+
+    public async Task UpdateStatusAsync(Guid orderId, string status, string? trackingNumber, DateTimeOffset now, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        await db.ExecuteAsync(
+            "update orders set status = @Status, tracking_number = @Tracking, updated_at = @Now where id = @Id",
+            new { Id = orderId, Status = status, Tracking = trackingNumber, Now = now });
     }
 
     public async Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)

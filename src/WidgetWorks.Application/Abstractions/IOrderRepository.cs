@@ -12,6 +12,8 @@ public interface IOrderRepository
     /// <summary>Marks the order failed and releases its inventory reservations.</summary>
     Task MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct);
 
+    Task UpdateStatusAsync(Guid orderId, string status, string? trackingNumber, DateTimeOffset now, CancellationToken ct);
+
     Task<Order?> GetByIdAsync(Guid id, CancellationToken ct);
 
     Task<Order?> GetByNumberAndEmailAsync(string orderNumber, string email, CancellationToken ct);

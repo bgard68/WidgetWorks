@@ -199,6 +199,15 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         return Task.CompletedTask;
     }
 
+    public Task UpdateStatusAsync(Guid orderId, string status, string? trackingNumber, DateTimeOffset now, CancellationToken ct)
+    {
+        var order = Orders.First(o => o.Id == orderId);
+        order.Status = status;
+        order.TrackingNumber = trackingNumber;
+        order.UpdatedAt = now;
+        return Task.CompletedTask;
+    }
+
     public Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
         => Task.FromResult(Orders.FirstOrDefault(o => o.Id == id));
 
@@ -208,6 +217,17 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
 
     public Task<IReadOnlyList<Order>> GetForUserAsync(Guid userId, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<Order>>(Orders.Where(o => o.UserId == userId).OrderByDescending(o => o.CreatedAt).ToList());
+}
+
+public sealed class FakeEmailSender : IEmailSender
+{
+    public readonly List<EmailMessage> Sent = new();
+
+    public Task SendAsync(EmailMessage message, CancellationToken ct)
+    {
+        Sent.Add(message);
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class InMemoryRefreshTokenRepository : IRefreshTokenRepository

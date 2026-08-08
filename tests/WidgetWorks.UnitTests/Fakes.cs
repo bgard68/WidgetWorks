@@ -17,6 +17,9 @@ public sealed class InMemoryUserRepository : IUserRepository
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct)
         => Task.FromResult(Store.TryGetValue(id, out var u) ? u : null);
 
+    public Task<User?> GetByGoogleSubAsync(string googleSub, CancellationToken ct)
+        => Task.FromResult(Store.Values.FirstOrDefault(u => u.GoogleSub == googleSub));
+
     public Task AddAsync(User user, CancellationToken ct)
     {
         Store[user.Id] = user;

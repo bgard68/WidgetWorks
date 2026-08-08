@@ -58,13 +58,21 @@ dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)"
 dotnet user-secrets set "ConnectionStrings:WidgetWorks" "Host=localhost;Port=5432;Database=widgetworks;Username=widgetworks;Password=<your-local-pw>"
 dotnet user-secrets set "Seed:DemoAdminPassword" "DemoAdmin!Change01"
 dotnet user-secrets set "Seed:DemoCustomerPassword" "DemoUser!Change01"
-dotnet run                  # API on http://localhost:5080 (or as configured)
+dotnet run                  # API on http://localhost:5080  (Scalar UI at /scalar/v1)
 
 cd ../../web
-copy .env.example .env.local # set VITE_API_BASE_URL to the API URL
+copy .env.example .env.local # VITE_API_BASE_URL already points at http://localhost:5080
 npm install
 npm run dev                 # SPA on http://localhost:5173
 ```
+
+> **Why 5080 / why user-secrets load:** `dotnet run` uses the profile in
+> `src/WidgetWorks.WebApi/Properties/launchSettings.json`, which sets
+> `ASPNETCORE_ENVIRONMENT=Development` and binds `http://localhost:5080`. The
+> Development environment is what makes .NET read the `dotnet user-secrets` values you
+> just set (in Production they are ignored). Port `5080` matches the SPA’s default
+> `VITE_API_BASE_URL`, so the web app talks to the API with no extra config. The CORS
+> policy already allows the Vite dev origin (`http://localhost:5173`).
 
 See [Configuration](04-configuration-and-2fa.md) for which mechanism supplies which
 values and why.
@@ -75,5 +83,9 @@ values and why.
   finish and `docker compose ps` to show all services running.
 - **“port is already allocated”** — something else is on 3000 / 8080 / 5432; stop it or
   remap the port in `docker-compose.yml`.
+- **API exits immediately / “signing key” or DB password errors under `dotnet run`** —
+  you’re almost certainly not in the Development environment (so user-secrets didn’t
+  load). Confirm `launchSettings.json` is present, or run
+  `dotnet run --environment Development`.
 - **Product images blank** — the sample photos come from an external service (picsum);
   it just needs internet. Everything else works offline.

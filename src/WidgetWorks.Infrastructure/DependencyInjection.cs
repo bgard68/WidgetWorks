@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Auth;
+using WidgetWorks.Infrastructure.Email;
 using WidgetWorks.Infrastructure.Payments;
 using WidgetWorks.Infrastructure.Persistence;
 using WidgetWorks.Infrastructure.Pricing;
@@ -14,7 +15,7 @@ namespace WidgetWorks.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit, 2FA, catalog, cart, pricing, orders, payments.</summary>
+    /// <summary>Registers infrastructure services: data access, security, clock, seeder, audit, 2FA, catalog, cart, pricing, orders, payments, email.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Dapper maps snake_case columns to PascalCase properties.
@@ -59,6 +60,19 @@ public static class DependencyInjection
         else
         {
             services.AddScoped<IPaymentGateway, MockPaymentGateway>();
+        }
+
+        // Email: Dev sender (logs to stdout) by default; real SMTP selected by config (secret never committed).
+        var emailOptions = new EmailOptions();
+        configuration.GetSection("Email").Bind(emailOptions);
+        services.AddSingleton(emailOptions);
+        if (string.Equals(emailOptions.Provider, "Smtp", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSender, DevEmailSender>();
         }
 
         return services;

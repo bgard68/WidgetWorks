@@ -1,5 +1,6 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Carts;
+using WidgetWorks.Application.Notifications;
 using WidgetWorks.Domain.Common;
 using WidgetWorks.Domain.Orders;
 
@@ -20,7 +21,7 @@ public sealed record CheckoutResult(string OrderNumber, Guid OrderId, string Sta
 /// <summary>
 /// Places an order: re-prices the cart server-side (never trusting client totals), reserves stock and
 /// persists a pending order atomically, charges the payment gateway, then finalizes -- releasing the
-/// reservation if payment fails and clearing the cart if it succeeds.
+/// reservation if payment fails and clearing the cart plus emailing a receipt if it succeeds.
 /// </summary>
 public sealed class CheckoutHandler(
     ICartRepository carts,
@@ -29,14 +30,15 @@ public sealed class CheckoutHandler(
     IShippingCalculator shipping,
     ITaxCalculator tax,
     IPaymentGateway payments,
+    IEmailSender email,
     TimeProvider clock)
 {
     public async Task<Result<CheckoutResult>> Handle(CheckoutCommand command, CancellationToken ct)
     {
         static Result<CheckoutResult> Fail(string error) => Result<CheckoutResult>.Fail(error);
 
-        var email = (command.Email ?? string.Empty).Trim();
-        if (!email.Contains('@'))
+        var normalizedEmail = (command.Email ?? string.Empty).Trim();
+        if (!normalizedEmail.Contains('@'))
         {
             return Fail("A valid email is required.");
         }
@@ -74,7 +76,7 @@ public sealed class CheckoutHandler(
             Id = Guid.NewGuid(),
             OrderNumber = $"WW-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}",
             UserId = command.UserId,
-            Email = email,
+            Email = normalizedEmail,
             ShipName = ship.Name?.Trim() ?? string.Empty,
             ShipLine1 = ship.Line1.Trim(),
             ShipLine2 = string.IsNullOrWhiteSpace(ship.Line2) ? null : ship.Line2.Trim(),
@@ -120,7 +122,17 @@ public sealed class CheckoutHandler(
         }
 
         await orders.MarkPaidAsync(order.Id, payment.Provider, payment.Reference ?? string.Empty, clock.GetUtcNow(), ct);
+        order.Status = OrderStatus.Paid;
         await carts.DeleteAsync(cart.Id, ct);
+
+        try
+        {
+            await email.SendAsync(EmailTemplates.OrderReceived(order), ct);
+        }
+        catch
+        {
+            // Best-effort receipt email; never fail a paid order on a notification error.
+        }
 
         return Result<CheckoutResult>.Success(new CheckoutResult(
             order.OrderNumber, order.Id, OrderStatus.Paid, order.Total, payment.Provider, payment.Reference ?? string.Empty));

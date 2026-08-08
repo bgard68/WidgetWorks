@@ -18,6 +18,7 @@ public sealed record OrderView(
     decimal Total,
     string? PaymentProvider,
     string? PaymentReference,
+    string? TrackingNumber,
     DateTimeOffset CreatedAt,
     IReadOnlyList<OrderItemView> Items)
 {
@@ -35,6 +36,7 @@ public sealed record OrderView(
         o.Total,
         o.PaymentProvider,
         o.PaymentReference,
+        o.TrackingNumber,
         o.CreatedAt,
         o.Items.Select(i => new OrderItemView(i.WidgetId, i.Sku, i.Name, i.UnitPrice, i.Quantity, i.LineSubtotal)).ToList());
 }

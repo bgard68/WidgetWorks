@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using WidgetWorks.Application.Auth.Login;
 using WidgetWorks.Application.Auth.Logout;
+using WidgetWorks.Application.Auth.PasswordReset;
 using WidgetWorks.Application.Auth.Refresh;
 using WidgetWorks.Application.Auth.Register;
 using WidgetWorks.Application.Carts.AddItem;
@@ -38,6 +39,8 @@ public static class DependencyInjection
         services.AddScoped<LoginHandler>();
         services.AddScoped<RefreshHandler>();
         services.AddScoped<LogoutHandler>();
+        services.AddScoped<RequestPasswordResetHandler>();
+        services.AddScoped<ResetPasswordHandler>();
         services.AddScoped<SecureAccountHandler>();
         services.AddScoped<EnrollHandler>();
         services.AddScoped<ConfirmEnrollHandler>();

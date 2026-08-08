@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using WidgetWorks.Application;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Auth;
 using WidgetWorks.Infrastructure.Email;
@@ -33,8 +34,13 @@ public static class DependencyInjection
         configuration.GetSection("AccountSecurity").Bind(accountSecurity);
         services.AddSingleton(accountSecurity);
 
+        var appOptions = new AppOptions();
+        configuration.GetSection("App").Bind(appOptions);
+        services.AddSingleton(appOptions);
+
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<ITwoFactorRepository, TwoFactorRepository>();
         services.AddScoped<IWidgetRepository, WidgetRepository>();
@@ -43,6 +49,7 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddSingleton<ITotpService, TotpService>();
         services.AddSingleton<IRecoveryCodes, RecoveryCodeService>();
+        services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.AddSingleton<IShippingCalculator, FlatRateShippingCalculator>();
         services.AddSingleton<ITaxRateProvider, StaticStateTaxRateProvider>();
         services.AddSingleton<ITaxCalculator, StateSalesTaxCalculator>();

@@ -1,4 +1,5 @@
 using WidgetWorks.Application.Abstractions;
+using WidgetWorks.Application.Notifications;
 using WidgetWorks.Domain.Common;
 using WidgetWorks.Domain.Users;
 
@@ -6,15 +7,12 @@ namespace WidgetWorks.Application.Auth.Register;
 
 public sealed record RegisterCommand(string Email, string Password);
 
-public sealed class RegisterHandler(
-    IUserRepository users,
-    IPasswordHasher hasher,
-    TimeProvider clock)
+public sealed class RegisterHandler(IUserRepository users, IPasswordHasher hasher, IEmailSender email, TimeProvider clock)
 {
     public async Task<Result> Handle(RegisterCommand command, CancellationToken ct)
     {
-        var email = (command.Email ?? string.Empty).Trim();
-        if (!email.Contains('@'))
+        var emailAddress = (command.Email ?? string.Empty).Trim();
+        if (!emailAddress.Contains('@'))
         {
             return Result.Fail("A valid email is required.");
         }
@@ -24,7 +22,7 @@ public sealed class RegisterHandler(
             return Result.Fail("Password must be at least 8 characters.");
         }
 
-        var normalized = email.ToUpperInvariant();
+        var normalized = emailAddress.ToUpperInvariant();
         if (await users.GetByNormalizedEmailAsync(normalized, ct) is not null)
         {
             // Non-enumerating: deliberately generic.
@@ -34,7 +32,7 @@ public sealed class RegisterHandler(
         var user = new User
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            Email = emailAddress,
             NormalizedEmail = normalized,
             PasswordHash = hasher.Hash(command.Password),
             Role = UserRoles.Customer,
@@ -43,6 +41,16 @@ public sealed class RegisterHandler(
         };
 
         await users.AddAsync(user, ct);
+
+        try
+        {
+            await email.SendAsync(AccountEmailTemplates.Welcome(user.Email), ct);
+        }
+        catch
+        {
+            // Welcome email is best-effort; never fail registration on a notification error.
+        }
+
         return Result.Success();
     }
 }

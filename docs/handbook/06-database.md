@@ -1,3 +1,5 @@
+[← Handbook index](README.md) · [Project README](../../README.md)
+
 # 6. Database & schema
 
 ## Why PostgreSQL (not SQLite)

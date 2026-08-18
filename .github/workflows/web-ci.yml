@@ -34,5 +34,7 @@ jobs:
         run: node --version && npm --version
       - name: Install
         run: npm install --no-audit --no-fund
+      - name: Unit tests (Vitest)
+        run: npm test
       - name: Build (type-check + bundle)
         run: npm run build

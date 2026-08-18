@@ -27,6 +27,11 @@ public sealed class UpdateWidgetHandler(IWidgetRepository widgets, TimeProvider 
             return Result.Fail("Widget not found.");
         }
 
+        if (widget.IsArchived)
+        {
+            return Result.Fail("Widget is archived and can no longer be edited.");
+        }
+
         widget.Name = command.Name.Trim();
         widget.Description = command.Description?.Trim() ?? string.Empty;
         widget.ImageUrl = string.IsNullOrWhiteSpace(command.ImageUrl) ? null : command.ImageUrl.Trim();

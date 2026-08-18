@@ -21,4 +21,10 @@ public interface IWidgetRepository
     Task AddAsync(Widget widget, CancellationToken ct);
 
     Task UpdateAsync(Widget widget, CancellationToken ct);
+
+    /// <summary>How many order lines reference this widget — zero means it can be deleted outright.</summary>
+    Task<int> CountOrderLinesAsync(Guid widgetId, CancellationToken ct);
+
+    /// <summary>Permanently removes a widget. Only safe when it has no order history.</summary>
+    Task DeleteAsync(Guid id, CancellationToken ct);
 }

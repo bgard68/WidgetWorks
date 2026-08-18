@@ -42,6 +42,7 @@ journal table so each runs once. Files live in
 | 0008 | Orders | `orders`, `order_items` |
 | 0009 | OrderTracking | `orders.tracking_number` |
 | 0010 | PasswordResetTokens | `password_reset_tokens` |
+| 0011 | WidgetArchive | `widgets.archived_at` (+ partial index on the live set) |
 
 ## Schema overview
 
@@ -71,8 +72,12 @@ erDiagram
 - **audit_events** — `id`, `user_id`, `action`, `detail`, `created_at` (login, lockout,
   2FA, password reset, etc.).
 - **widgets** — `id`, `sku` (unique, upper), `name`, `description`, `image_url`, `price`
-  `numeric(12,2)`, `is_active`, `quantity_on_hand`, `quantity_reserved`, timestamps.
-  Available = on_hand − reserved (enforced by a check constraint).
+  `numeric(12,2)`, `is_active`, `quantity_on_hand`, `quantity_reserved`, `archived_at`,
+  timestamps. Available = on_hand − reserved (enforced by a check constraint).
+  `archived_at` marks a retired widget: `order_items` references `widgets(id)` with no delete
+  rule, so a widget that has been sold cannot be removed without breaking order history. It is
+  archived instead — the row stays for reporting, and every listing filters on
+  `archived_at is null`. Widgets that were never ordered are deleted outright.
 - **carts / cart_items** — cart is nullable-`user_id` (guest = null); items unique per
   `(cart_id, widget_id)`, FK-cascade.
 - **orders** — `id`, `order_number` (unique), `user_id` (nullable = guest), `email`,

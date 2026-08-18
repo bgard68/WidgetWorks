@@ -12,6 +12,7 @@ using WidgetWorks.Application.Carts.RemoveItem;
 using WidgetWorks.Application.Carts.UpdateItem;
 using WidgetWorks.Application.Catalog.Browse;
 using WidgetWorks.Application.Catalog.Create;
+using WidgetWorks.Application.Catalog.Delete;
 using WidgetWorks.Application.Catalog.Detail;
 using WidgetWorks.Application.Catalog.Inventory;
 using WidgetWorks.Application.Catalog.Update;
@@ -54,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<GetWidgetHandler>();
         services.AddScoped<CreateWidgetHandler>();
         services.AddScoped<UpdateWidgetHandler>();
+        services.AddScoped<DeleteWidgetHandler>();
         services.AddScoped<AdjustInventoryHandler>();
         services.AddScoped<GetCartHandler>();
         services.AddScoped<AddCartItemHandler>();

@@ -44,13 +44,21 @@ services:
       Cors__AllowedOrigins: ${Cors__AllowedOrigins:-http://localhost:3000,http://localhost:5173}
       App__BaseUrl: ${App__BaseUrl:-http://localhost:3000}
       Payments__Provider: ${Payments__Provider:-Mock}
+      # Optional shared secret for the mock webhook; empty means no signature required.
+      Payments__Mock__WebhookSecret: ${Payments__Mock__WebhookSecret:-}
+      # Stripe TEST mode only. Values come from .env / the secret store — never literals here.
+      Payments__Stripe__SecretKey: ${Payments__Stripe__SecretKey:-}
+      Payments__Stripe__WebhookSecret: ${Payments__Stripe__WebhookSecret:-}
       Email__Provider: ${Email__Provider:-Dev}
       # Defaults match EmailOptions, so behaviour is unchanged unless .env sets them.
       # Note UseStartTls must be false for Mailpit — port 1025 is plain SMTP.
       Email__Host: ${Email__Host:-localhost}
       Email__Port: ${Email__Port:-587}
       Email__UseStartTls: ${Email__UseStartTls:-true}
+      Email__Username: ${Email__Username:-}
+      Email__Password: ${Email__Password:-}
       Email__FromAddress: ${Email__FromAddress:-no-reply@widgetworks.demo}
+      Email__FromName: ${Email__FromName:-WidgetWorks}
       Google__ClientId: ${Google__ClientId:-}
       Seed__DemoAdminPassword: ${Seed__DemoAdminPassword:-DemoAdmin!Change01}
       Seed__DemoCustomerPassword: ${Seed__DemoCustomerPassword:-DemoUser!Change01}
@@ -59,6 +67,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   web:
     build:

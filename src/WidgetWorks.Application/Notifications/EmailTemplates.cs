@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Net;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Orders;
 
@@ -22,21 +24,40 @@ public static class EmailTemplates
         $"Your WidgetWorks order {order.OrderNumber} was cancelled",
         "Your order has been cancelled. If this is unexpected, please contact support.");
 
+    /// <summary>
+    /// Invariant culture so a host whose locale uses a comma decimal separator cannot
+    /// email "24,50" to a customer reading dollars.
+    /// </summary>
+    private static string Money(decimal amount) => amount.ToString("0.00", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Everything interpolated into the html body is data, and widget names plus tracking
+    /// numbers are staff-supplied — encode them so a value containing markup cannot inject
+    /// into a customer's inbox.
+    /// </summary>
+    private static string E(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
     private static EmailMessage Build(Order order, string subject, string intro)
     {
         var htmlItems = string.Concat(order.Items.Select(i =>
-            $"<li>{i.Quantity} × {i.Name} — ${i.LineSubtotal:0.00}</li>"));
-        var html =
-            $"<p>{intro}</p>" +
-            $"<p>Order <strong>{order.OrderNumber}</strong></p>" +
-            $"<ul>{htmlItems}</ul>" +
-            $"<p>Subtotal: ${order.Subtotal:0.00}<br/>Shipping: ${order.Shipping:0.00}<br/>Tax: ${order.Tax:0.00}<br/>" +
-            $"<strong>Total: ${order.Total:0.00}</strong></p>";
+            $"<li>{i.Quantity} &#215; {E(i.Name)} &#8212; ${Money(i.LineSubtotal)}</li>"));
 
-        var textItems = string.Join("\n", order.Items.Select(i => $"  {i.Quantity} x {i.Name} - ${i.LineSubtotal:0.00}"));
+        var html = EmailLayout.Document(
+            $"<p>{E(intro)}</p>" +
+            $"<p>Order <strong>{E(order.OrderNumber)}</strong></p>" +
+            $"<ul style=\"padding-left:20px\">{htmlItems}</ul>" +
+            "<p>" +
+            $"Subtotal: ${Money(order.Subtotal)}<br>" +
+            $"Shipping: ${Money(order.Shipping)}<br>" +
+            $"Tax: ${Money(order.Tax)}<br>" +
+            $"<strong>Total: ${Money(order.Total)}</strong>" +
+            "</p>");
+
+        var textItems = string.Join("\n", order.Items.Select(i => $"  {i.Quantity} x {i.Name} - ${Money(i.LineSubtotal)}"));
         var text =
             $"{intro}\n\nOrder {order.OrderNumber}\n{textItems}\n\n" +
-            $"Subtotal: ${order.Subtotal:0.00}\nShipping: ${order.Shipping:0.00}\nTax: ${order.Tax:0.00}\nTotal: ${order.Total:0.00}";
+            $"Subtotal: ${Money(order.Subtotal)}\nShipping: ${Money(order.Shipping)}\n" +
+            $"Tax: ${Money(order.Tax)}\nTotal: ${Money(order.Total)}";
 
         return new EmailMessage(order.Email, subject, html, text);
     }

@@ -220,32 +220,27 @@ almost always means the role assignment in step 5 has not propagated yet; wait a
 
 ## 7. Deploy the API — publish output only
 
-```bash
-rm -rf ./publish
-dotnet publish src/WidgetWorks.WebApi/WidgetWorks.WebApi.csproj -c Release -o ./publish
-```
-
-Zip the **contents** of `publish/`, not the folder itself:
+Use the script. It publishes to a scratch directory, **refuses to continue** if the output contains
+anything that must never be public, zips the contents, deploys, and then polls `/health`:
 
 ```bash
-(cd publish && zip -r ../api.zip .)
-
-az webapp deploy --name $APP --resource-group $RG --type zip --src-path api.zip
+APP=$APP RG=$RG ./scripts/deploy-api-azure.sh
 ```
 
-```bash
-rm -f api.zip && rm -rf ./publish
-```
+The guard aborts on any `.cs`, `.csproj`, `.env`, `.sln`, `docker-compose*.yml`, or a `.git/`,
+`node_modules/`, `src/`, `web/`, `tests/` or `docs/` directory, and it verifies
+`WidgetWorks.WebApi.dll` and `appsettings.json` are present before shipping.
 
-This ships compiled assemblies and nothing else — no `.cs`, no `.env`, no `.git`, no
-`node_modules`. Never use `az webapp up` here: it infers the project from the working directory and
-will happily push the entire repository into `wwwroot`.
+**Never use `az webapp up`.** It infers the project from the working directory and pushes the
+entire repository into `wwwroot`, where the source, `.env` and git history are served over HTTP.
+That is the single most expensive mistake available here, and the script exists to make it
+impossible.
 
 Migrations run automatically on start (DbUp), so there is no separate migration step.
 
-```bash
-curl -s "https://$APP.azurewebsites.net/health"
-```
+If you deploy by hand instead, the only safe shape is: publish to a directory *outside* the repo,
+then zip its **contents** — `(cd "$STAGE" && zip -qr ../api.zip .)`. Zipping the folder itself
+nests everything one level down and App Service serves nothing.
 
 ---
 

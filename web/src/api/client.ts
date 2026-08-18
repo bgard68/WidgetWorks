@@ -28,6 +28,11 @@ export function clearSession() {
   localStorage.removeItem(ROLE_KEY)
 }
 
+/** True while a token refresh is in flight — exercised by the concurrency check. */
+export function isRefreshing(): boolean {
+  return refreshInFlight !== null
+}
+
 export function getRefreshToken(): string | null {
   return localStorage.getItem(REFRESH_KEY)
 }
@@ -51,7 +56,22 @@ async function raw(path: string, options: RequestInit): Promise<Response> {
   })
 }
 
-async function tryRefresh(): Promise<boolean> {
+// Refresh tokens rotate on use, so concurrent refreshes must not be allowed.
+// The access token lives in memory only, so after a reload every request in
+// flight gets a 401 at once. If each one posted its own refresh, the first
+// would succeed and rotate the token while the rest presented an
+// already-consumed one, failed, and ran clearSession() — tearing down the
+// session the first had just established and signing the user out at random.
+//
+// Callers therefore share a single in-flight refresh and reuse its outcome.
+let refreshInFlight: Promise<boolean> | null = null
+
+function tryRefresh(): Promise<boolean> {
+  refreshInFlight ??= runRefresh().finally(() => { refreshInFlight = null })
+  return refreshInFlight
+}
+
+async function runRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken()
   if (!refreshToken) return false
   const res = await fetch(`${API_BASE_URL}/auth/refresh`, {

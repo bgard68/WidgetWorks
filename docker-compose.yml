@@ -21,6 +21,14 @@ services:
       timeout: 5s
       retries: 10
 
+  # Local mail catcher: accepts SMTP on 1025 and shows the delivered messages
+  # (text AND html) at http://localhost:8025. Nothing leaves the machine.
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
   api:
     build:
       context: .
@@ -37,6 +45,12 @@ services:
       App__BaseUrl: ${App__BaseUrl:-http://localhost:3000}
       Payments__Provider: ${Payments__Provider:-Mock}
       Email__Provider: ${Email__Provider:-Dev}
+      # Defaults match EmailOptions, so behaviour is unchanged unless .env sets them.
+      # Note UseStartTls must be false for Mailpit — port 1025 is plain SMTP.
+      Email__Host: ${Email__Host:-localhost}
+      Email__Port: ${Email__Port:-587}
+      Email__UseStartTls: ${Email__UseStartTls:-true}
+      Email__FromAddress: ${Email__FromAddress:-no-reply@widgetworks.demo}
       Google__ClientId: ${Google__ClientId:-}
       Seed__DemoAdminPassword: ${Seed__DemoAdminPassword:-DemoAdmin!Change01}
       Seed__DemoCustomerPassword: ${Seed__DemoCustomerPassword:-DemoUser!Change01}

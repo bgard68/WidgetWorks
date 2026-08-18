@@ -83,10 +83,28 @@ Email__FromAddress=no-reply@yourdomain.com
 Email__FromName=WidgetWorks
 ```
 
-Works with SendGrid, Mailgun, Postmark, Amazon SES, or a **local mail catcher**
-(Mailpit/MailHog) for offline testing — point `Email__Host` at it and read the captured
-mail in its UI. Sending is **best-effort** at call sites: a failed email never rolls back
-a paid order or a status change. Production upgrade path (MailKit) is documented in
+Works with SendGrid, Mailgun, Postmark, Amazon SES, or a **local mail catcher**.
+
+### Reading real mail locally (Mailpit)
+
+`docker compose` ships a **Mailpit** service so you can exercise the true `Smtp` path — and
+see the **HTML** bodies, which the `Dev` sender never shows — without an account or a
+credential. Put this in `.env` and `docker compose up -d`:
+
+```
+Email__Provider=Smtp
+Email__Host=mailpit
+Email__Port=1025
+Email__UseStartTls=false
+```
+
+`Email__UseStartTls=false` is the one that catches people: it defaults to **true**, but
+Mailpit's 1025 is plain SMTP, so leaving it on makes every send fail. Read the captured mail
+at **http://localhost:8025**.
+
+Sending is **best-effort** at call sites: a failed email never rolls back a paid order or a
+status change. Because callers swallow the error, `SmtpEmailSender` logs
+`[email] FAILED …` before rethrowing — otherwise a misconfigured host is invisible. Production upgrade path (MailKit) is documented in
 [ADR-023](../architecture/adr-023-transactional-email.md).
 
 ## Google sign-in setup

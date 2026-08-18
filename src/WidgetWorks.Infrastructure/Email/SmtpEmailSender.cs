@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Mail;
+using System.Net.Mime;
+using System.Text;
 using WidgetWorks.Application.Abstractions;
 
 namespace WidgetWorks.Infrastructure.Email;
@@ -17,10 +19,20 @@ public sealed class SmtpEmailSender(EmailOptions options) : IEmailSender
         {
             From = new MailAddress(options.FromAddress, options.FromName),
             Subject = message.Subject,
+            SubjectEncoding = Encoding.UTF8,
+
+            // The plain-text version IS the body, and the HTML version rides alongside as the
+            // preferred alternative — the canonical multipart/alternative shape. Leaving Body
+            // empty and adding BOTH text and HTML as alternate views produced a message whose
+            // HTML part mail clients rendered as blank.
+            Body = message.TextBody,
+            BodyEncoding = Encoding.UTF8,
+            IsBodyHtml = false,
         };
+
         mail.To.Add(message.To);
-        mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(message.TextBody, null, "text/plain"));
-        mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(message.HtmlBody, null, "text/html"));
+        mail.AlternateViews.Add(
+            AlternateView.CreateAlternateViewFromString(message.HtmlBody, Encoding.UTF8, MediaTypeNames.Text.Html));
 
         using var client = new SmtpClient(options.Host, options.Port)
         {
@@ -30,6 +42,16 @@ public sealed class SmtpEmailSender(EmailOptions options) : IEmailSender
                 : new NetworkCredential(options.Username, options.Password),
         };
 
-        await client.SendMailAsync(mail, ct);
+        try
+        {
+            await client.SendMailAsync(mail, ct);
+        }
+        catch (Exception ex)
+        {
+            // Callers treat a notification failure as non-fatal and swallow it, so without this
+            // line a misconfigured host is completely invisible: no email and no trace of why.
+            Console.WriteLine($"[email] FAILED to send \"{message.Subject}\" to {message.To}: {ex.Message}");
+            throw;
+        }
     }
 }

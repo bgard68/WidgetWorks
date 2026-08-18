@@ -62,6 +62,7 @@ Start at the index, or jump straight to a chapter:
 | 7 | [Testing & smoke test](docs/handbook/07-testing.md) | Unit tests, CI gates, the end-to-end smoke test |
 | 8 | [Bugs & lessons learned](docs/handbook/08-bugs-and-lessons.md) | Real bugs: how found, fixed, prevented |
 | 9 | [Runbook — testing & going live](docs/handbook/09-runbook.md) | **Step-by-step to test email, payments & Google locally, and how to configure each for real** |
+| 10 | [Deploying to Azure on free tiers](docs/handbook/10-deploy-azure-free.md) | Running the whole stack for $0 — F1 App Service, Static Web Apps, Key Vault + managed identity, Postgres on Neon |
 
 Other docs: **[Security policy](SECURITY.md)** · **[Local development notes](docs/local-development.md)** · **[Web app README](web/README.md)** · **[Architecture ADRs](docs/architecture/)**.
 

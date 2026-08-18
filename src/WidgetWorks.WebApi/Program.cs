@@ -77,22 +77,40 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(Policies.ManageCatalog, policy => policy.RequireRole(UserRoles.Manager, UserRoles.Administrator));
-    options.AddPolicy(Policies.ManageUsers, policy => policy.RequireRole(UserRoles.Administrator));
+    options.AddPolicy(Policies.ManageUsers, policy => policy.RequireRole(UserRoles.Administrator));
     options.AddPolicy(Policies.DeleteCatalog, policy => policy.RequireRole(UserRoles.Administrator));
 });
 
 var app = builder.Build();
 
 // Apply migrations and seed demo accounts + demo widgets on startup.
+//
+// Deliberately does NOT throw when the database is unreachable. Throwing here exits the process,
+// the host restarts it, and it fails again — a restart loop that silently consumes a free tier's
+// daily CPU allowance and reports nothing useful. Instead the app starts, /health reports
+// unhealthy and says why, and the operator fixes the setting and restarts once. The retry inside
+// TryRun covers the common benign case: a serverless database still waking from idle.
 var connectionString = WidgetWorks.Infrastructure.DependencyInjection.BuildConnectionString(app.Configuration);
-MigrationRunner.Run(connectionString);
+var migration = MigrationRunner.TryRun(
+    connectionString,
+    log: message => app.Logger.LogWarning("{Message}", message));
 
-using (var scope = app.Services.CreateScope())
+if (migration.Successful)
 {
+    using var scope = app.Services.CreateScope();
     var seeder = scope.ServiceProvider.GetRequiredService<DbSeeder>();
     var seed = new SeedOptions();
     app.Configuration.GetSection("Seed").Bind(seed);
     await seeder.SeedAsync(seed, CancellationToken.None);
+}
+else
+{
+    // Loud, once, with the reason — the thing a restart loop never gives you.
+    app.Logger.LogCritical(
+        "Database unavailable after {Attempts} attempts: {Error}. The API is running but every " +
+        "data request will fail; /health reports unhealthy. Check ConnectionStrings__WidgetWorks.",
+        migration.Attempts,
+        migration.Error);
 }
 
 if (app.Environment.IsDevelopment())
@@ -105,7 +123,13 @@ app.UseCors(SpaCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapGet("/health", (TimeProvider clock) => Results.Ok(new { status = "ok", utcNow = clock.GetUtcNow() }));
+// 200 only when the database is actually usable. A 503 naming the failure is what turns a silent
+// restart loop into a one-line diagnosis.
+app.MapGet("/health", (TimeProvider clock) => migration.Successful
+    ? Results.Ok(new { status = "ok", utcNow = clock.GetUtcNow() })
+    : Results.Json(
+        new { status = "unhealthy", reason = "database migration failed", detail = migration.Error, utcNow = clock.GetUtcNow() },
+        statusCode: StatusCodes.Status503ServiceUnavailable));
 app.MapAuthEndpoints();
 app.MapSecurityEndpoints();
 app.MapTwoFactorEndpoints();

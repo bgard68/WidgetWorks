@@ -15,6 +15,7 @@ export function LoginPage() {
   const [challenge, setChallenge] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   async function mergeCartThenGo() {
     if (cart?.id) {
@@ -27,6 +28,7 @@ export function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setBusy(true)
     try {
       const res = await login(email, password)
       if (res.twoFactorRequired && res.challengeToken) {
@@ -36,46 +38,87 @@ export function LoginPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign in failed.')
+    } finally {
+      setBusy(false)
     }
   }
 
   async function submitCode(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setBusy(true)
     try {
       await completeTwoFactor(challenge!, code)
       await mergeCartThenGo()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid code.')
+    } finally {
+      setBusy(false)
     }
   }
 
   return (
-    <section className="narrow">
-      <h1>Sign in</h1>
-      {!challenge ? (
-        <form onSubmit={submit} className="form">
-          <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-          <label>Password<input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-          {error && <p className="error">{error}</p>}
-          <button>Sign in</button>
-        </form>
-      ) : (
-        <form onSubmit={submitCode} className="form">
-          <p>Enter the 6-digit code from your authenticator app.</p>
-          <label>Code<input value={code} onChange={(e) => setCode(e.target.value)} /></label>
-          {error && <p className="error">{error}</p>}
-          <button>Verify</button>
-        </form>
-      )}
-      <div className="or">or</div>
-      <GoogleButton onCredential={async (idToken) => {
-        try { await loginWithGoogle(idToken); await mergeCartThenGo() }
-        catch (err) { setError(err instanceof Error ? err.message : 'Google sign-in failed.') }
-      }} />
-      <p className="muted">
-        <Link to="/register">Create an account</Link> · <Link to="/forgot-password">Forgot password?</Link>
-      </p>
-    </section>
+    <div className="authpage">
+      <div className="authcard">
+        {!challenge ? (
+          <>
+            <h1>Sign in</h1>
+            <p className="sub">Use your WidgetWorks account to track orders and check out faster.</p>
+            <form onSubmit={submit}>
+              <label className="field">
+                <span>Email address</span>
+                <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </label>
+              <label className="field">
+                <span>Password</span>
+                <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              </label>
+              {error && <p className="alert alert-err">{error}</p>}
+              <button className="btn btn-primary btn-block btn-lg" disabled={busy}>
+                {busy ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <h1>Two-step verification</h1>
+            <p className="sub">Enter the 6-digit code from your authenticator app.</p>
+            <form onSubmit={submitCode}>
+              <label className="field">
+                <span>Verification code</span>
+                <input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  required
+                />
+              </label>
+              {error && <p className="alert alert-err">{error}</p>}
+              <button className="btn btn-primary btn-block btn-lg" disabled={busy}>
+                {busy ? 'Verifying…' : 'Verify'}
+              </button>
+            </form>
+          </>
+        )}
+
+        <div className="divider">or</div>
+        <div className="google-slot">
+          <GoogleButton onCredential={async (idToken) => {
+            try { await loginWithGoogle(idToken); await mergeCartThenGo() }
+            catch (err) { setError(err instanceof Error ? err.message : 'Google sign-in failed.') }
+          }} />
+        </div>
+
+        <p className="help" style={{ marginTop: 14, textAlign: 'center' }}>
+          <Link to="/forgot-password" className="link">Forgot your password?</Link>
+        </p>
+      </div>
+
+      <div className="auth-alt">
+        New to WidgetWorks? <Link to="/register">Create an account</Link>
+      </div>
+    </div>
   )
 }

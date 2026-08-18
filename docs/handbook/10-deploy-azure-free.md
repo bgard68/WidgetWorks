@@ -27,6 +27,37 @@ Apps, which is a separate service with its own CDN.
 Key Vault from a temporary file that is deleted, and App Service holds only
 `@Microsoft.KeyVault(...)` references resolved at runtime by a managed identity.
 
+### The startup crash loop — read this before deploying
+
+`Program.cs` runs `MigrationRunner.Run(connectionString)` at line 88, **before** `app.Run()`. DbUp
+throws if it cannot reach or migrate the database, the process exits, App Service restarts it, and
+it fails again — a loop that quietly consumes the F1 tier's **60 CPU-minutes per day**. A wrong
+connection string does not produce a broken page; it produces a day of burnt quota.
+
+Two habits make this a non-event:
+
+**Prove the connection string works before it goes anywhere near Azure.**
+
+```bash
+psql "postgresql://<user>:<pw>@<host>.neon.tech/widgetworks?sslmode=require" -c "select 1"
+```
+
+**Watch the first boot, and stop the app the moment it loops.**
+
+```bash
+az webapp log tail --name $APP --resource-group $RG   # ctrl-c when healthy
+az webapp stop --name $APP --resource-group $RG       # stops the bleeding instantly
+```
+
+A stopped app burns nothing. Fix the setting, then `az webapp start`.
+
+Neon suspends after 5 minutes idle, so the very first connection may arrive while the database is
+still waking. Give the connection string room to wait rather than letting DbUp fail the boot:
+
+```text
+;Timeout=30;Command Timeout=60
+```
+
 ---
 
 ## 0. Shared variables
@@ -71,8 +102,13 @@ Manual, one time — Neon has no Azure CLI.
 Rewrite it into the form the app expects, and keep `SSL Mode=Require`:
 
 ```text
-Host=<host>.neon.tech;Database=widgetworks;Username=<user>;Password=<pw>;SSL Mode=Require;Trust Server Certificate=true
+Host=<host>.neon.tech;Database=widgetworks;Username=<user>;Password=<pw>;SSL Mode=Require;Trust Server Certificate=true;Timeout=30;Command Timeout=60
 ```
+
+The timeouts are not optional padding — see the crash-loop note above. `BuildConnectionString`
+reads `ConnectionStrings:WidgetWorks` first and only falls back to the `Postgres:*` keys, so
+setting `ConnectionStrings__WidgetWorks` alone is correct and the `Postgres__*` keys are unused
+in Azure.
 
 Neon suspends compute after 5 minutes idle and wakes on the next connection, so the first request
 after a quiet spell is slow — the same cold start F1 already has.
@@ -296,6 +332,46 @@ az webapp config appsettings set --name $APP --resource-group $RG --settings \
 customers to their own machine.
 
 ---
+
+## Every configuration key the app reads
+
+Taken from the source, not from memory — `grep` for `configuration["..."]`, `GetSection` and
+`GetConnectionString` across `src/`. Anything absent falls back to the default shown.
+
+| Key | Required? | Default if unset |
+|---|---|---|
+| `ConnectionStrings__WidgetWorks` | **Yes in Azure** | falls back to `Postgres__*`, i.e. `localhost` → **boot loop** |
+| `Postgres__Host` / `Port` / `Database` / `Username` / `Password` | no (Docker path) | `localhost` / `5432` / `widgetworks` / `widgetworks` / empty |
+| `Jwt__SigningKey` | **Yes** | empty — the app boots but every token operation fails |
+| `Jwt__Issuer` / `Audience` / `KeyId` / `AccessTokenMinutes` / `RefreshTokenDays` | no | `appsettings.json` |
+| `Cors__AllowedOrigins` | **Yes** | unset means the SPA is blocked by the browser |
+| `App__BaseUrl` | for email links | password-reset links point at localhost |
+| `Payments__Provider` | no | `Mock` |
+| `Payments__Mock__WebhookSecret` | no | empty = webhook needs no signature |
+| `Payments__Stripe__SecretKey` / `WebhookSecret` | only if provider is Stripe | empty |
+| `Email__Provider` | no | `Dev` (writes to the log) |
+| `Email__Host` / `Port` / `UseStartTls` / `Username` / `Password` / `FromAddress` / `FromName` | only if provider is Smtp | `localhost` / `587` / **`true`** / … |
+| `Google__ClientId` | only for Google sign-in | empty = disabled server-side |
+| `Seed__DemoAdminEmail` / `DemoCustomerEmail` | no | `appsettings.json` |
+| `Seed__DemoAdminPassword` / `DemoCustomerPassword` | no | empty |
+| `AccountSecurity` section | no | code defaults |
+
+Only two of these will stop a deployment dead: the connection string (boot loop) and
+`Cors__AllowedOrigins` (SPA cannot reach the API). `Jwt__SigningKey` fails later, at first sign-in,
+which is easy to misdiagnose as a login bug.
+
+## What ships in the deployment
+
+Verified against a real `dotnet publish`:
+
+- The **11 migrations are embedded resources inside `WidgetWorks.Infrastructure.dll`**, not loose
+  files. There is no `Migrations/` folder to copy and none to forget.
+- `appsettings.json` ships and is required for the non-secret defaults.
+- `appsettings.Development.json`, `web.config` and the `.pdb` files also ship. The first two are
+  inert on Linux. The `.pdb`s only add stack-trace detail; add `-p:DebugType=none` to the publish
+  if you would rather not ship them.
+- The SPA bundle is `index.html`, `assets/` and `staticwebapp.config.json` — the config only
+  reaches `dist/` because it lives in `web/public/`.
 
 ## 10. Verify
 

@@ -226,10 +226,45 @@ Static Web Apps is available in a subset of regions; `eastus2` serves `centralus
 free tier is fronted by a CDN anyway.
 
 ```bash
-API_URL="https://$(az webapp show --name $APP --resource-group $RG --query defaultHostName -o tsv)"
-
-VITE_API_BASE_URL="$API_URL" npm --prefix web run build
+API_HOST=$(az webapp show --name $APP --resource-group $RG --query defaultHostName -o tsv)
+API_URL="https://$API_HOST"
 ```
+
+**Both** `VITE_*` values must be present at build time. Omitting `VITE_GOOGLE_CLIENT_ID` doesn't
+error — `GoogleButton` renders nothing when it's empty, so Google sign-in just silently disappears
+from the deployed site. Set it to the same OAuth Web client id the API has in
+`Google__ClientId`, or leave it deliberately blank to disable the feature:
+
+```bash
+VITE_API_BASE_URL="$API_URL" \
+VITE_GOOGLE_CLIENT_ID="${VITE_GOOGLE_CLIENT_ID:-}" \
+  npm --prefix web run build
+```
+
+### staticwebapp.config.json
+
+`web/public/staticwebapp.config.json` lives in `public/` so Vite copies it verbatim into `dist/`
+(anything outside `public/` is never emitted). It does two jobs Static Web Apps cannot do without
+it:
+
+- **`navigationFallback`** rewrites unknown paths to `index.html`. Without it every deep link —
+  `/widgets/<id>`, `/orders`, `/checkout` — returns 404, because SWA looks for a real file.
+- **A Content-Security-Policy that permits Google.** The sign-in button loads
+  `accounts.google.com/gsi/client` and renders inside a Google-hosted frame, so the policy must
+  allow `accounts.google.com` in `script-src`, `frame-src` and `connect-src`, plus
+  `*.googleusercontent.com` in `img-src` for avatars. Under a default policy Google sign-in fails
+  silently. `img-src` also allows `picsum.photos`, which serves the placeholder product photos.
+
+`connect-src` ships with a `REPLACE_API_ORIGIN` placeholder — the browser must be allowed to call
+the API, and its hostname isn't known until step 4. Substitute it into the built output:
+
+```bash
+sed -i "s|https://REPLACE_API_ORIGIN|$API_URL|" web/dist/staticwebapp.config.json
+grep -o "connect-src[^;]*" web/dist/staticwebapp.config.json
+```
+
+The `grep` should echo your real API origin. If `REPLACE_API_ORIGIN` is still there, every API call
+from the deployed SPA will be blocked by CSP.
 
 ```bash
 TOKEN=$(az staticwebapp secrets list --name $SWA --resource-group $RG \

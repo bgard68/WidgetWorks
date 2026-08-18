@@ -16,6 +16,11 @@ public sealed class AdjustInventoryHandler(IWidgetRepository widgets, TimeProvid
             return Result<int>.Fail("Widget not found.");
         }
 
+        if (widget.IsArchived)
+        {
+            return Result<int>.Fail("Widget is archived and can no longer be restocked.");
+        }
+
         var newOnHand = widget.QuantityOnHand + command.QuantityOnHandDelta;
         if (newOnHand < 0)
         {

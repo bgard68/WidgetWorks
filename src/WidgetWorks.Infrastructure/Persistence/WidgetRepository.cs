@@ -7,10 +7,13 @@ namespace WidgetWorks.Infrastructure.Persistence;
 public sealed class WidgetRepository(IDbConnectionFactory factory) : IWidgetRepository
 {
     private const string Columns =
-        "id, sku, name, description, image_url, price, is_active, quantity_on_hand, quantity_reserved, created_at, updated_at";
+        "id, sku, name, description, image_url, price, is_active, quantity_on_hand, quantity_reserved, created_at, updated_at, archived_at";
 
+    // Archived widgets are excluded from every listing. GetByIdAsync deliberately
+    // still returns them so order history and reporting can resolve a retired widget.
     private const string Filter =
-        @"where (@ActiveOnly = false or is_active = true)
+        @"where archived_at is null
+            and (@ActiveOnly = false or is_active = true)
             and (@Search is null or name ilike @Pattern or sku ilike @Pattern)";
 
     public async Task<Widget?> GetByIdAsync(Guid id, CancellationToken ct)
@@ -76,8 +79,23 @@ public sealed class WidgetRepository(IDbConnectionFactory factory) : IWidgetRepo
         using var db = await factory.OpenAsync(ct);
         await db.ExecuteAsync(
             @"update widgets set name = @Name, description = @Description, image_url = @ImageUrl, price = @Price,
-                 is_active = @IsActive, quantity_on_hand = @QuantityOnHand, quantity_reserved = @QuantityReserved, updated_at = @UpdatedAt
+                 is_active = @IsActive, quantity_on_hand = @QuantityOnHand, quantity_reserved = @QuantityReserved,
+                 updated_at = @UpdatedAt, archived_at = @ArchivedAt
               where id = @Id",
             widget);
+    }
+
+    public async Task<int> CountOrderLinesAsync(Guid widgetId, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        return await db.ExecuteScalarAsync<int>(
+            "select count(*) from order_items where widget_id = @widgetId",
+            new { widgetId });
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        await db.ExecuteAsync("delete from widgets where id = @id", new { id });
     }
 }

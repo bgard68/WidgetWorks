@@ -63,7 +63,13 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
   tokens signed by previous, non-revoked keys; unknown/revoked `kid` → rejected.
 - **2FA** — TOTP (authenticator app) with single-use, hashed recovery codes.
 - **RBAC** — policy-based: `ManageCatalog` (Manager or Administrator) guards catalog/orders;
-  `ManageUsers` is Administrator-only.
+  `ManageUsers` and `DeleteCatalog` are Administrator-only. Removing a widget is deliberately
+  narrower than editing one: a Manager can create, edit, restock and hide, but not retire.
+- **Retiring a widget** — `DELETE /admin/catalog/widgets/{id}` deletes outright only when the
+  widget has no order history. Once it appears on an order it is **archived** instead
+  (`archived_at` set, `is_active` cleared): `order_items` still references the row, so past
+  orders stay reportable, while every listing, the product page and add-to-cart drop it. The
+  response says which of the two happened.
 - **Immutable admin** — the seeded administrator’s identity can’t change or be deleted,
   enforced at the **domain** layer (`ProtectedAdminGuard`) **and** the **database** layer
   (a trigger) — defense in depth.

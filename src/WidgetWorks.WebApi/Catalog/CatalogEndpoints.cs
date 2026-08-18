@@ -1,5 +1,7 @@
 using WidgetWorks.Application.Catalog.Browse;
 using WidgetWorks.Application.Catalog.Create;
+using WidgetWorks.Application.Catalog.Delete;
+
 using WidgetWorks.Application.Catalog.Detail;
 using WidgetWorks.Application.Catalog.Inventory;
 using WidgetWorks.Application.Catalog.Update;
@@ -55,6 +57,21 @@ public static class CatalogEndpoints
             var result = await handler.Handle(command, ct);
             return result.IsSuccess ? Results.NoContent() : Results.BadRequest(new { error = result.Error });
         });
+
+        // Administrator only (DeleteCatalog), unlike the rest of this group: a widget
+        // that has been ordered is archived rather than deleted so those orders stay
+        // reportable. The response says which happened.
+        admin.MapDelete("/widgets/{id:guid}", async (Guid id, DeleteWidgetHandler handler, CancellationToken ct) =>
+        {
+            var result = await handler.Handle(new DeleteWidgetCommand(id), ct);
+            return result is { IsSuccess: true, Value: { } outcome }
+                ? Results.Ok(new
+                {
+                    outcome = outcome.Outcome.ToString(),
+                    orderLineCount = outcome.OrderLineCount,
+                })
+                : Results.BadRequest(new { error = result.Error });
+        }).RequireAuthorization(Policies.DeleteCatalog);
 
         admin.MapPost("/widgets/{id:guid}/inventory", async (Guid id, AdjustInventoryRequest body, AdjustInventoryHandler handler, CancellationToken ct) =>
         {

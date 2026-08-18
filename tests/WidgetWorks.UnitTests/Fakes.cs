@@ -40,6 +40,9 @@ public sealed class InMemoryWidgetRepository : IWidgetRepository
 {
     public readonly Dictionary<Guid, Widget> Store = new();
 
+    /// <summary>Order lines per widget id — drives the delete-vs-archive decision.</summary>
+    public readonly Dictionary<Guid, int> OrderLines = new();
+
     public Task<Widget?> GetByIdAsync(Guid id, CancellationToken ct)
         => Task.FromResult(Store.TryGetValue(id, out var w) ? w : null);
 
@@ -71,9 +74,18 @@ public sealed class InMemoryWidgetRepository : IWidgetRepository
         return Task.CompletedTask;
     }
 
+    public Task<int> CountOrderLinesAsync(Guid widgetId, CancellationToken ct)
+        => Task.FromResult(OrderLines.TryGetValue(widgetId, out var n) ? n : 0);
+
+    public Task DeleteAsync(Guid id, CancellationToken ct)
+    {
+        Store.Remove(id);
+        return Task.CompletedTask;
+    }
+
     private IEnumerable<Widget> Filter(WidgetQuery query)
     {
-        IEnumerable<Widget> q = Store.Values;
+        IEnumerable<Widget> q = Store.Values.Where(w => !w.IsArchived);
         if (query.ActiveOnly)
         {
             q = q.Where(w => w.IsActive);

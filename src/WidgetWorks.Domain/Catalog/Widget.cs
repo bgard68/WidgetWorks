@@ -26,8 +26,18 @@ public sealed class Widget
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>
+    /// Set when the widget is retired. Archived widgets are kept so past orders
+    /// stay reportable, but they no longer appear in the storefront or the admin
+    /// catalog. Null for every live widget.
+    /// </summary>
+    public DateTimeOffset? ArchivedAt { get; set; }
+
     /// <summary>Sellable stock = on hand minus reserved, never negative.</summary>
     public int QuantityAvailable => Math.Max(0, QuantityOnHand - QuantityReserved);
 
     public bool IsInStock => QuantityAvailable > 0;
+
+    /// <summary>Retired from sale but retained for order history.</summary>
+    public bool IsArchived => ArchivedAt is not null;
 }

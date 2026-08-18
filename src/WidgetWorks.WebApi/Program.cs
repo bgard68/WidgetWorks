@@ -77,7 +77,8 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(Policies.ManageCatalog, policy => policy.RequireRole(UserRoles.Manager, UserRoles.Administrator));
-    options.AddPolicy(Policies.ManageUsers, policy => policy.RequireRole(UserRoles.Administrator));
+    options.AddPolicy(Policies.ManageUsers, policy => policy.RequireRole(UserRoles.Administrator));
+    options.AddPolicy(Policies.DeleteCatalog, policy => policy.RequireRole(UserRoles.Administrator));
 });
 
 var app = builder.Build();

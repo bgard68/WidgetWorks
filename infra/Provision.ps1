@@ -155,8 +155,11 @@ if (-not $SkipInfra) {
         }
         elseif ($existing -notcontains 'Jwt--SigningKey') {
             Write-Step 'Generating Jwt--SigningKey'
+            # GetBytes on an instance, not the static Fill(): Fill() is .NET Core only and
+            # Windows PowerShell 5.1 runs on .NET Framework, where it does not exist.
             $bytes = New-Object byte[] 48
-            [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+            $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+            try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
             [System.IO.File]::WriteAllText($secretFile, [Convert]::ToBase64String($bytes))
             Invoke-Az keyvault secret set --vault-name $VaultName --name 'Jwt--SigningKey' `
                 --file $secretFile --output none | Out-Null

@@ -30,7 +30,7 @@ export function OrdersPage() {
   return (
     <>
       <nav className="crumbs" aria-label="Breadcrumb">
-        <Link to="/" className="link">Home</Link>
+        <Link to="/store" className="link">Home</Link>
         <span className="sep" aria-hidden="true">›</span>
         <span className="cur">Your orders</span>
       </nav>
@@ -40,7 +40,7 @@ export function OrdersPage() {
           <h1>Your orders</h1>
           <p>{orders.length} {orders.length === 1 ? 'order' : 'orders'} placed with this account.</p>
         </div>
-        <Link to="/" className="btn btn-secondary">Continue shopping</Link>
+        <Link to="/store" className="btn btn-secondary">Continue shopping</Link>
       </div>
 
       {orders.length === 0 ? (
@@ -48,7 +48,7 @@ export function OrdersPage() {
           <span className="empty-ico" aria-hidden="true">📦</span>
           <h2>No orders yet</h2>
           <p>When you place an order it will appear here with its status and tracking.</p>
-          <Link to="/" className="btn btn-primary">Start shopping</Link>
+          <Link to="/store" className="btn btn-primary">Start shopping</Link>
         </div>
       ) : (
         <div className="orderlist">

@@ -22,7 +22,7 @@ export function LoginPage() {
       try { await api<CartView>('/cart/merge', { method: 'POST', body: { guestCartId: cart.id } }) } catch { /* ignore */ }
       await refresh()
     }
-    navigate('/')
+    navigate('/store')
   }
 
   async function submit(e: React.FormEvent) {

@@ -156,6 +156,31 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         return order;
     }
 
+    public async Task<IReadOnlyList<Order>> GetRecentAsync(int limit, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        var list = (await db.QueryAsync<Order>(
+            $"select {OrderColumns} from orders order by created_at desc limit @limit",
+            new { limit })).ToList();
+        if (list.Count == 0)
+        {
+            return list;
+        }
+
+        // The item rows are loaded, not skipped: OrderSummary derives its item count from them,
+        // so leaving Items empty reported every order as containing nothing.
+        var ids = list.Select(o => o.Id).ToArray();
+        var items = await db.QueryAsync<OrderItem>(
+            $"select {ItemColumns} from order_items where order_id = any(@ids)", new { ids });
+        var grouped = items.GroupBy(i => i.OrderId).ToDictionary(g => g.Key, g => g.ToList());
+        foreach (var o in list)
+        {
+            o.Items = grouped.TryGetValue(o.Id, out var it) ? it : [];
+        }
+
+        return list;
+    }
+
     public async Task<IReadOnlyList<Order>> GetForUserAsync(Guid userId, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);

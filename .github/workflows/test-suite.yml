@@ -1,0 +1,76 @@
+name: Test suite
+
+# Reusable gate: every deployment calls this and will not proceed unless all three jobs pass.
+# Kept in one file so the API and web deploys cannot drift apart on what "tests passed" means.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend unit tests (xUnit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test
+        run: dotnet test WidgetWorks.slnx --configuration Release --nologo
+
+  frontend:
+    name: Frontend unit tests (Vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Test
+        run: npm test
+      - name: Build (type-check + bundle)
+        run: npm run build
+
+  smoke:
+    name: API smoke test (end-to-end)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare env (placeholder values are valid for CI)
+        run: cp .env.example .env
+
+      - name: Start database + API
+        run: docker compose up -d --build db api
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 80); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
+              echo "API healthy"; exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::API did not become healthy in time"
+          docker compose logs api
+          exit 1
+
+      - name: Run smoke test (PowerShell)
+        shell: pwsh
+        run: ./scripts/smoke-test.ps1 -BaseUrl http://localhost:8080
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

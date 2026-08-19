@@ -21,7 +21,7 @@ export function OrderConfirmationPage() {
         <h2>No recent order to show</h2>
         <p>Order confirmations appear here right after checkout. Sign in to look up past orders.</p>
         <div className="row" style={{ justifyContent: 'center' }}>
-          <Link to="/" className="btn btn-primary">Back to shop</Link>
+          <Link to="/store" className="btn btn-primary">Back to shop</Link>
           <Link to="/orders" className="btn btn-secondary">Your orders</Link>
         </div>
       </div>
@@ -120,7 +120,7 @@ export function OrderConfirmationPage() {
               <div className="panel-body stack">
                 <p className="muted">Head back to the shop and try again with a different payment method.</p>
                 <div className="row">
-                  <Link to="/" className="btn btn-primary">Back to the shop</Link>
+                  <Link to="/store" className="btn btn-primary">Back to the shop</Link>
                 </div>
               </div>
             </div>
@@ -138,7 +138,7 @@ export function OrderConfirmationPage() {
             </div>
             <div className="panel-foot">
               <div className="row">
-                <Link to="/" className="btn btn-secondary btn-sm">Continue shopping</Link>
+                <Link to="/store" className="btn btn-secondary btn-sm">Continue shopping</Link>
                 <Link to="/orders" className="btn btn-secondary btn-sm">Your orders</Link>
               </div>
             </div>

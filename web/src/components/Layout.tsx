@@ -13,7 +13,7 @@ export function Layout() {
 
   const q = params.get('q') ?? ''
   const cat = params.get('cat') ?? ''
-  const onCatalog = location.pathname === '/'
+  const onCatalog = location.pathname === '/store'
 
   // The input is local so typing doesn't re-run the catalog query on every
   // keystroke; the URL (and the fetch) updates when the search is submitted.
@@ -25,7 +25,7 @@ export function Layout() {
     if (nextQ.trim()) sp.set('q', nextQ.trim())
     if (nextCat) sp.set('cat', nextCat)
     const qs = sp.toString()
-    navigate(qs ? `/?${qs}` : '/')
+    navigate(qs ? `/store?${qs}` : '/store')
   }
 
   return (
@@ -35,7 +35,8 @@ export function Layout() {
         <div className="wrap util-in">
           <span className="util-promo">
             <span aria-hidden="true">🚚</span>
-            Free standard shipping on orders over ${FREE_SHIPPING_THRESHOLD} · Demo store
+            Free standard shipping on orders over ${FREE_SHIPPING_THRESHOLD} ·{' '}
+            <Link to="/">Demo store — read the guide</Link>
           </span>
           <span className="util-links">
             <a href="https://github.com/bgard68/WidgetWorks" target="_blank" rel="noreferrer">
@@ -51,7 +52,7 @@ export function Layout() {
       {/* Header --------------------------------------------------------- */}
       <header className="hdr">
         <div className="wrap hdr-in">
-          <Link to="/" className="brand" aria-label="WidgetWorks home">
+          <Link to="/store" className="brand" aria-label="WidgetWorks home">
             <span className="brand-mark" aria-hidden="true">⚡</span>
             <span>
               <span className="brand-name">Widget<b>Works</b></span>
@@ -59,7 +60,7 @@ export function Layout() {
             </span>
           </Link>
 
-          <Link to="/?cat=kit" className="deliver">
+          <Link to="/store?cat=kit" className="deliver">
             <span className="ico" aria-hidden="true">📍</span>
             <span className="lines">
               <span className="l1">Shipping to</span>
@@ -136,13 +137,13 @@ export function Layout() {
           {CATEGORIES.map((c) => (
             <Link
               key={c.slug || 'all'}
-              to={c.slug ? `/?cat=${c.slug}` : '/'}
+              to={c.slug ? `/store?cat=${c.slug}` : '/store'}
               className={onCatalog && c.slug === cat ? 'on' : ''}
             >
               {c.slug ? c.label : 'All widgets'}
             </Link>
           ))}
-          <Link to="/?cat=kit" className="rail-deal">Today&apos;s deals</Link>
+          <Link to="/store?cat=kit" className="rail-deal">Today&apos;s deals</Link>
         </div>
       </nav>
 
@@ -177,10 +178,10 @@ export function Layout() {
 
           <div className="foot-col">
             <h4>Shop</h4>
-            <Link to="/">All widgets</Link>
-            <Link to="/?cat=kit">Kits</Link>
-            <Link to="/?cat=mega">Mega widgets</Link>
-            <Link to="/?cat=mini">Mini widgets</Link>
+            <Link to="/store">All widgets</Link>
+            <Link to="/store?cat=kit">Kits</Link>
+            <Link to="/store?cat=mega">Mega widgets</Link>
+            <Link to="/store?cat=mini">Mini widgets</Link>
           </div>
 
           <div className="foot-col">
@@ -193,13 +194,14 @@ export function Layout() {
 
           <div className="foot-col">
             <h4>Customer service</h4>
-            <Link to="/?cat=">Shipping rates</Link>
-            <Link to="/?cat=">Returns policy</Link>
+            <Link to="/store?cat=">Shipping rates</Link>
+            <Link to="/store?cat=">Returns policy</Link>
             <Link to="/forgot-password">Password help</Link>
           </div>
 
           <div className="foot-col">
             <h4>About the project</h4>
+            <Link to="/">Demo guide</Link>
             <a href="https://github.com/bgard68/WidgetWorks" target="_blank" rel="noreferrer">Source on GitHub</a>
             <a href="https://github.com/bgard68/WidgetWorks/tree/main/docs/handbook" target="_blank" rel="noreferrer">Engineering handbook</a>
             <a href="https://github.com/bgard68/WidgetWorks/blob/main/SECURITY.md" target="_blank" rel="noreferrer">Security policy</a>

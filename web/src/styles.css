@@ -289,6 +289,7 @@ select{
 }
 .table tbody tr:last-child td{border-bottom:0}
 .table tbody tr:hover{background:var(--surface-2)}
+.table tbody tr.on{background:var(--info-bg);box-shadow:inset 3px 0 0 var(--link)}
 .table .num{text-align:right;font-variant-numeric:tabular-nums}
 .table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--sh-1)}
 
@@ -794,6 +795,63 @@ select{
 .btn-danger-solid:hover:not(:disabled){background:var(--danger-ink)}
 
 /* --------------------------------------------------------------------------
+   Regions — demo guide (landing page)
+   -------------------------------------------------------------------------- */
+.guide{display:flex;flex-direction:column;gap:22px;max-width:1040px;margin:0 auto}
+.guide section{scroll-margin-top:80px}
+
+.guide-hero{
+  padding:34px;border-radius:var(--r-lg);color:#fff;box-shadow:var(--sh-2);
+  background:
+    radial-gradient(900px 320px at 88% -10%,var(--hero-glow),transparent 60%),
+    linear-gradient(118deg,var(--hero-from) 0%,var(--hero-mid) 55%,var(--hero-to) 100%);
+}
+.guide-hero h1{font-size:2.1rem;color:#fff;margin:12px 0 10px;max-width:20ch}
+.guide-hero p{max-width:62ch;color:var(--hero-body);font-size:1rem;margin-bottom:18px}
+
+/* The "will this charge me?" answer gets its own emphasis. */
+.guide-assure{border-left:4px solid var(--ok)}
+.guide-assure h2{font-size:1.15rem;margin-bottom:8px}
+
+.guide-accounts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.guide-role .panel-head{display:flex;flex-direction:column;gap:2px}
+.guide-role .panel-body{display:flex;flex-direction:column;gap:8px}
+
+.copyfield{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.copyfield-label{font-size:.75rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);width:64px;flex:0 0 auto}
+.copyfield-value{
+  flex:1;min-width:0;padding:6px 9px;border-radius:var(--r-xs);
+  background:var(--surface-3);border:1px solid var(--line);
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.82rem;
+  overflow-x:auto;white-space:nowrap;
+}
+
+.guide-can{display:flex;flex-direction:column;gap:5px;margin-top:6px;font-size:.84rem;line-height:1.45}
+.guide-can li{display:flex;gap:8px;align-items:flex-start;color:var(--ink-2)}
+.guide-can li span{color:var(--ok);font-weight:700;flex:0 0 auto}
+.guide-can li.no{color:var(--ink-3)}
+.guide-can li.no span{color:var(--danger)}
+
+.guide-steps{display:flex;flex-direction:column;gap:12px;counter-reset:step;padding-left:0}
+.guide-steps li{
+  position:relative;padding:14px 18px 14px 52px;list-style:none;line-height:1.55;color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--sh-1);
+}
+.guide-steps li::before{
+  counter-increment:step;content:counter(step);
+  position:absolute;left:16px;top:14px;display:grid;place-items:center;
+  width:24px;height:24px;border-radius:var(--r-pill);
+  background:var(--chrome-900);color:#fff;font-size:.78rem;font-weight:800;
+}
+.guide-steps strong{color:var(--ink)}
+
+@media (max-width:640px){
+  .guide-hero{padding:24px}
+  .guide-hero h1{font-size:1.6rem}
+  .copyfield-label{width:auto}
+}
+
+/* --------------------------------------------------------------------------
    Regions — admin
    -------------------------------------------------------------------------- */
 .admin-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
@@ -881,6 +939,13 @@ select{
 }
 
 @media print{
-  .util,.hdr,.rail,.foot,.foot-top,.btn,.buybox{display:none !important}
+  /* What survives a print is the receipt: the order, its items and its totals. */
+  .util,.hdr,.rail,.foot,.foot-top,.btn,.buybox,.crumbs,.pill{display:none !important}
   body{background:#fff}
+  .content{padding:0;max-width:none}
+  .panel,.table-wrap{border:0;box-shadow:none;break-inside:avoid}
+  .confirm-grid,.cartlayout,.co{grid-template-columns:1fr !important;gap:12px}
+  .summary,.cart-aside{position:static}
+  .cline{break-inside:avoid}
+  a[href]::after{content:""}
 }

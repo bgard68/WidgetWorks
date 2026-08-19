@@ -91,18 +91,18 @@ export function CatalogPage() {
                 From the everyday Standard to the heavy-duty Mega — quality widgets,
                 fast shipping and honest prices, backed by a 30-day return window.
               </p>
-              <Link to="/?cat=kit" className="btn btn-primary btn-lg hero-cta">
+              <Link to="/store?cat=kit" className="btn btn-primary btn-lg hero-cta">
                 Shop the kits
               </Link>
             </div>
 
-            <Link to="/?cat=kit" className="tile tile-a">
+            <Link to="/store?cat=kit" className="tile tile-a">
               <small>Deals</small>
               <h3>Save on Widget Pro kits</h3>
               <span className="go">Shop kits</span>
             </Link>
 
-            <Link to="/?cat=mega" className="tile tile-b">
+            <Link to="/store?cat=mega" className="tile tile-b">
               <small>New</small>
               <h3>Weatherproof Mega widgets</h3>
               <span className="go">See what&apos;s new</span>
@@ -111,7 +111,7 @@ export function CatalogPage() {
 
           <nav className="shortcuts" aria-label="Shop by category">
             {CATEGORIES.filter((c) => c.slug).map((c) => (
-              <Link key={c.slug} to={`/?cat=${c.slug}`} className="shortcut">
+              <Link key={c.slug} to={`/store?cat=${c.slug}`} className="shortcut">
                 <span className="ico" aria-hidden="true">{c.icon}</span>
                 <span className="lbl">{c.label}</span>
               </Link>
@@ -122,7 +122,7 @@ export function CatalogPage() {
 
       {!browsing && (
         <nav className="crumbs" aria-label="Breadcrumb">
-          <Link to="/" className="link">Home</Link>
+          <Link to="/store" className="link">Home</Link>
           <span className="sep" aria-hidden="true">›</span>
           <span className="cur">{heading}</span>
         </nav>
@@ -172,7 +172,7 @@ export function CatalogPage() {
               ? `We couldn't find anything for “${q}”${category ? ` in ${category.label}` : ''}. Try a different term or browse all departments.`
               : 'Nothing in this category yet. Browse the full catalog instead.'}
           </p>
-          <Link to="/" className="btn btn-secondary">Browse all widgets</Link>
+          <Link to="/store" className="btn btn-secondary">Browse all widgets</Link>
         </div>
       )}
     </>

@@ -25,4 +25,8 @@ public interface IOrderRepository
     Task<Order?> GetByNumberAndEmailAsync(string orderNumber, string email, CancellationToken ct);
 
     Task<IReadOnlyList<Order>> GetForUserAsync(Guid userId, CancellationToken ct);
+
+    /// <summary>Most recent orders across all customers — the staff view. Capped, not paged:
+    /// staff want "what came in lately", and an unbounded scan is the wrong default.</summary>
+    Task<IReadOnlyList<Order>> GetRecentAsync(int limit, CancellationToken ct);
 }

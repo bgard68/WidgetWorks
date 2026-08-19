@@ -27,7 +27,7 @@ export function OrderDetailPage() {
   return (
     <>
       <nav className="crumbs" aria-label="Breadcrumb">
-        <Link to="/" className="link">Home</Link>
+        <Link to="/store" className="link">Home</Link>
         <span className="sep" aria-hidden="true">›</span>
         <Link to="/orders" className="link">Your orders</Link>
         <span className="sep" aria-hidden="true">›</span>
@@ -39,7 +39,14 @@ export function OrderDetailPage() {
           <h1>Order {order.orderNumber}</h1>
           <p>Placed {dateFmt.format(new Date(order.createdAt))}</p>
         </div>
-        <StatusPill status={order.status} />
+        <div className="row">
+          <StatusPill status={order.status} />
+          {/* The receipt email cannot be delivered on the hosted demo, so the order page is the
+              receipt. The print stylesheet already drops the header, rail, footer and buttons. */}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>
+            Print receipt
+          </button>
+        </div>
       </div>
 
       <div className="confirm-grid">

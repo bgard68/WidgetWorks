@@ -146,6 +146,5 @@ Dockerfile.api, Dockerfile.web, docker-compose.yml
 
 ## License
 
-No `LICENSE` file is published yet, so the default applies: **all rights reserved** — the
-source is public to read, not licensed for reuse. Adding a license (MIT is the usual choice
-for a portfolio project) is a one-file change.
+**MIT** — see [`LICENSE`](LICENSE). Use it, fork it, build on it; the copyright notice
+travels with it and there is no warranty.

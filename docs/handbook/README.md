@@ -13,10 +13,10 @@ payments (sync + async/webhook), transactional email, and an order lifecycle.
 2. [Architecture](02-architecture.md) — onion/clean layering, request flow, security model, seams.
 3. [Setup & run](03-setup-and-run.md) — one-command Docker, hybrid dev, URLs, demo accounts.
 4. [Configuration, secrets, email & 2FA](04-configuration-and-2fa.md) — what keys go where/how/why; email + Google setup; how to set up 2FA.
-5. [Payments & testing credit cards](05-payments.md) — Mock + Stripe test mode, async/webhooks, testing without charging a card, going live.
+5. [Payments, tax & testing credit cards](05-payments.md) — how the total is built (shipping + per-state sales tax, worked examples, the rate table), Mock + Stripe test mode, async/webhooks, testing without charging a card, going live.
 6. [Database & schema](06-database.md) — why PostgreSQL, migrations, tables and relationships.
 7. [Testing & smoke test](07-testing.md) — unit tests, CI gates, and how to run the end-to-end smoke test.
-8. [Bugs & lessons learned](08-bugs-and-lessons.md) — real bugs hit, how found, how fixed, how prevented.
+8. [Bugs & lessons learned](08-bugs-and-lessons.md) — 32 real bugs, how each was found, fixed, and prevented — from CI-as-compiler through deployment.
 9. [Runbook — testing & going live](09-runbook.md) — step-by-step to test email, payments, and Google locally, and exactly what to change to go live.
 10. [Deploying to Azure on free tiers](10-deploy-azure-free.md) — the whole stack for $0: F1 App Service, Static Web Apps, Key Vault with a managed identity, and Postgres on Neon.
 

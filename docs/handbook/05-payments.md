@@ -37,27 +37,91 @@ subtotal (sum of line items)  →  + shipping  →  + sales tax  →  = total
 No card numbers ever touch the app or the database — only a payment **token** and, after a
 charge, the gateway's reference id. That keeps the app out of PCI scope.
 
-## Sales tax & the rate table
+## Sales tax — how it's calculated, and what's covered
 
-Sales tax is computed by `StateSalesTaxCalculator` on the **subtotal** (shipping is not
-taxed in this model), using the **destination state** from the shipping address:
+### One rule, applied server-side
 
-- The state code is normalized (`"ca"` → `"CA"`).
-- Its base rate is looked up in the rate table; an **unknown or missing state → 0%**.
-- `tax = round(subtotal × rate, 2, away-from-zero)`.
-- The result is `(stateCode, rate, amount)`, and the order **snapshots** `tax_state`,
-  `tax_rate`, and `tax` — so the exact rate charged is preserved on that order forever,
-  even if the table later changes.
+`StateSalesTaxCalculator` needs exactly two inputs: the **destination state** from the
+shipping address, and the **subtotal**.
 
-States with **no** state sales tax — **AK, DE, MT, NH, OR** — correctly resolve to **$0**.
-(There is no "tax credit" or discount concept: tax is *added* per destination state, and
-no-tax states simply yield zero.)
+```
+taxable  = subtotal                            ← shipping is NOT taxed in this model
+rate     = rateTable[trim(upper(stateCode))]   ← unlisted, unknown or blank → 0
+tax      = round(taxable × rate, 2, AwayFromZero)
+total    = subtotal + shipping + tax
+```
+
+The state code is normalized before lookup (`" ca "` → `"CA"`), and the calculator returns
+`TaxLine(StateCode, Rate, Amount)` where **`Rate` is a fraction** — `0.0725` means 7.25%.
+Rounding is half-**away-from-zero**, the retail convention, rather than .NET's default
+banker's rounding: `$6.525` bills as `$6.53`, not `$6.52`.
+
+None of it trusts the browser. `CheckoutHandler` re-reads unit prices from the database and
+recomputes the tax at the moment the order is placed, whatever the client displayed.
+
+### Worked example
+
+Three items totalling **$89.97**, shipped Standard:
+
+| | to **California** | to **Oregon** | to **`""`/unknown** |
+|---|---|---|---|
+| Subtotal | $89.97 | $89.97 | $89.97 |
+| Shipping | $0.00 *(free ≥ $75)* | $0.00 | $0.00 |
+| Tax rate | `0.0725` | `0.0000` | `0.0000` |
+| Tax | **$6.52** — `round(89.97 × 0.0725)` = `round(6.5228…)` | **$0.00** | **$0.00** |
+| **Total** | **$96.49** | **$89.97** | **$89.97** |
+
+Switch that same order to **Express** and it becomes `89.97 + 22.99 + 6.52 = $119.48` —
+the shipping charge rises, the tax does not, because shipping isn't in the taxable base.
+
+### Who pays it, and what's covered
+
+- **The buyer pays it.** Tax is *added* to the order total; the store never absorbs,
+  discounts, or nets it out. There is no exemption, resale-certificate, or tax-credit
+  concept in this model.
+- **Nothing is remitted.** Payments run against the mock gateway (or Stripe **test** mode),
+  so no money — and therefore no tax — actually moves. The figure exists to exercise the
+  pricing path, not to satisfy a filing obligation.
+- **Coverage is all 50 states + DC**, at the **state base rate only**. Five states levy no
+  state sales tax and correctly resolve to $0 — **AK, DE, MT, NH, OR**. Anything outside
+  the table (a Canadian province, a typo, an empty string) resolves to **0%** rather than
+  failing the order.
+- **The order snapshots what it charged** — `tax_state`, `tax_rate` and `tax` are written
+  onto the order row, so the exact rate applied is preserved on that order forever even if
+  the table changes later.
+
+### The rate table
+
+Compiled in as of **`EffectiveOn` = 2025-07-01** (state base rates, as decimal fractions in
+code — shown here as percentages):
+
+| State | Rate | State | Rate | State | Rate | State | Rate |
+|---|---:|---|---:|---|---:|---|---:|
+| AK | 0% | ID | 6% | MT | 0% | RI | 7% |
+| AL | 4% | IL | 6.25% | NC | 4.75% | SC | 6% |
+| AR | 6.5% | IN | 7% | ND | 5% | SD | 4.2% |
+| AZ | 5.6% | KS | 6.5% | NE | 5.5% | TN | 7% |
+| CA | 7.25% | KY | 6% | NH | 0% | TX | 6.25% |
+| CO | 2.9% | LA | 4.45% | NJ | 6.625% | UT | 6.1% |
+| CT | 6.35% | MA | 6.25% | NM | 4.875% | VA | 5.3% |
+| DC | 6% | MD | 6% | NV | 6.85% | VT | 6% |
+| DE | 0% | ME | 5.5% | NY | 4% | WA | 6.5% |
+| FL | 6% | MI | 6% | OH | 5.75% | WI | 5% |
+| GA | 4% | MN | 6.875% | OK | 4.5% | WV | 6% |
+| HI | 4% | MO | 4.225% | OR | 0% | WY | 4% |
+| IA | 6% | MS | 7% | PA | 6% | | |
+
+**Deliberate simplification:** real US sales tax is destination-based across thousands of
+local/county/city jurisdictions, with product-category exemptions and economic-nexus rules.
+This app uses a single **state-level base rate** as a documented approximation — enough to
+demonstrate correct, server-side, snapshotted tax handling — with the seam in place so a
+real engine replaces it without touching checkout.
 
 ### Where the rates come from — and when they update
 
 Rates come from an `ITaxRateProvider`. The default, `StaticStateTaxRateProvider`, is an
-**offline, versioned** table of the 50 states + DC base rates compiled into the app. Its
-freshness is made explicit by two fields on the rate set:
+**offline, versioned** table compiled into the app. Its freshness is made explicit by two
+fields on the rate set:
 
 - **`EffectiveOn`** — the date the rates are good as of (currently **2025-07-01**), and
 - **`Source`** — a note on where the numbers came from.
@@ -74,11 +138,35 @@ table" therefore means one of two things:
    checkout**. A live engine is what actually "checks for updates" (per request or on its own
    schedule); the built-in table intentionally does not. This is the production path (ADR-022).
 
-**Deliberate simplification:** real US sales tax is destination-based across thousands of
-local/county/city jurisdictions, with product-category exemptions and economic-nexus rules.
-This app uses a single **state-level base rate** as a documented approximation — enough to
-show correct, server-side, snapshotted tax handling — with the seam in place so a real engine
-replaces it without touching checkout.
+### Seeing the numbers without placing an order
+
+`POST /checkout/quote` runs the **same** shipping and tax calculators without creating an
+order, which is how the cart and checkout screens show a live breakdown as you pick a state
+or a shipping method:
+
+```json
+{ "subtotal": 89.97, "shippingMethod": "Standard", "shipping": 0.00,
+  "stateCode": "CA", "taxRate": 0.0725, "tax": 6.52, "total": 96.49,
+  "itemCount": 3, "isEmpty": false }
+```
+
+`GET /checkout/tax-info` reports the table's provenance rather than any rate —
+`{ effectiveOn, source, stateCount }` — so staleness is visible from outside the app.
+`GET /checkout/shipping-methods` lists the methods the calculator accepts.
+
+### Shipping, for completeness
+
+`FlatRateShippingCalculator` is the other half of the total, and is tiered rather than flat
+despite the name:
+
+| Method | Charge |
+|---|---|
+| **Standard** | **free** when subtotal ≥ **$75**; otherwise **$6.99** + **$0.75** per item beyond the first |
+| **Express** | **$19.99** + **$1.50** per item beyond the first (no free threshold) |
+
+`itemCount` is the sum of quantities, not the number of distinct lines — one line of qty 2
+counts as 2, so the surcharge applies. Anything other than `Express` normalizes to
+`Standard`, and the result is rounded to 2dp away-from-zero.
 
 ## Asynchronous payments (BNPL / redirect) & webhooks
 

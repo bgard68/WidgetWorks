@@ -62,6 +62,15 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
 - **`kid` key rotation** — a signing-key ring signs with the active key and still validates
   tokens signed by previous, non-revoked keys; unknown/revoked `kid` → rejected.
 - **2FA** — TOTP (authenticator app) with single-use, hashed recovery codes.
+- **The order owns its fulfilment rules.** `OrderStatus.AllowedNext`/`CanTransition` hold the
+  transition table and `Order.TransitionTo` applies it, so the invariant travels with the
+  entity instead of living in whichever handler happens to call it. `UpdateOrderStatusHandler`
+  asks permission first and reports a refusal as a `Result` — a rejected transition is an
+  expected outcome at an API boundary, not an exception.
+- **One pricer, two callers.** `OrderPricer` is the single calculation behind both
+  `POST /checkout/quote` and checkout itself, so the total a shopper is shown and the total
+  they are charged cannot drift apart. `OrderDraft` builds the order row, leaving
+  `CheckoutHandler` sequencing steps rather than performing them.
 - **RBAC** — policy-based: `ManageCatalog` (Manager or Administrator) guards catalog/orders;
   `ManageUsers` and `DeleteCatalog` are Administrator-only. Removing a widget is deliberately
   narrower than editing one: a Manager can create, edit, restock and hide, but not retire.

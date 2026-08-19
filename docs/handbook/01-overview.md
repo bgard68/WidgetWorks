@@ -38,9 +38,10 @@ parts most demos skip, on clean, testable, time-abstracted code.
 | Auth | JWT (short-lived access + rotating refresh), per-user **security stamp**, `kid` key rotation, **TOTP 2FA** (Otp.NET), **Google OIDC** |
 | Time | `TimeProvider` everywhere for deterministic, testable time |
 | Payments | `IPaymentGateway` — Mock (default) + Stripe test mode |
-| Web | **React 18 + TypeScript** (Vite 8) SPA, **Vitest** unit tests |
+| Web | **React 18 + TypeScript** (Vite 8) SPA; **Vitest + Testing Library** |
 | Run | **Docker Compose** (db + api + web + **Mailpit** mail catcher) |
 | CI | GitHub Actions — gitleaks, build (warnings-as-errors) + tests, CodeQL, Dependabot, web build |
+| Tests | 463 across four layers — backend unit, PostgreSQL integration, frontend component, end-to-end smoke. **95.5% backend / 89.5% frontend** lines, floors enforced in CI |
 | CD | Path-scoped deploys (API and web move independently; docs move nothing), each gated on the **whole** test suite |
 | Hosting | Azure **App Service F1** (API) + **Static Web Apps** (SPA) + **Key Vault** via managed identity, Postgres on **Neon** — all free tiers ([ch.10](10-deploy-azure-free.md)) |
 
@@ -54,6 +55,7 @@ src/
   WidgetWorks.WebApi          Minimal API endpoints, DI, auth wiring
 tests/
   WidgetWorks.UnitTests       xUnit tests with in-memory fakes + FakeTimeProvider
+  WidgetWorks.IntegrationTests repository tests against a real PostgreSQL
 web/                          React + TypeScript SPA (Vite)
 infra/                        Provision.ps1 — idempotent Azure provisioning
 scripts/                      smoke-test.ps1, deploy helpers, tooling

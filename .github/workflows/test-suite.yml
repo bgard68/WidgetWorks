@@ -1,6 +1,6 @@
 name: Test suite
 
-# Reusable gate: every deployment calls this and will not proceed unless all three jobs pass.
+# Reusable gate: every deployment calls this and will not proceed unless all four jobs pass.
 # Kept in one file so the API and web deploys cannot drift apart on what "tests passed" means.
 on:
   workflow_call:
@@ -20,7 +20,81 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Test
-        run: dotnet test WidgetWorks.slnx --configuration Release --nologo
+        run: >
+          dotnet test tests/WidgetWorks.UnitTests/WidgetWorks.UnitTests.csproj
+          --configuration Release --nologo
+          --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          --results-directory ./TestResults
+      - name: Upload coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-unit
+          path: TestResults/**/coverage.cobertura.xml
+          retention-days: 1
+
+  integration:
+    name: Repository integration tests (PostgreSQL)
+    runs-on: ubuntu-latest
+
+    # The Dapper repositories are mostly SQL — the atomic stock reservation, the ON CONFLICT
+    # upserts, the cascades. A real server is the only thing that can exercise them, so one runs
+    # here. The suite creates and drops its own throwaway database per run.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: widgetworks
+          POSTGRES_PASSWORD: replace-me-locally
+          POSTGRES_DB: widgetworks
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U widgetworks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test
+        env:
+          WIDGETWORKS_TEST_DB: Host=localhost;Port=5432;Database=postgres;Username=widgetworks;Password=replace-me-locally
+        run: >
+          dotnet test tests/WidgetWorks.IntegrationTests/WidgetWorks.IntegrationTests.csproj
+          --configuration Release --nologo
+          --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          --results-directory ./TestResults
+      - name: Upload coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-integration
+          path: TestResults/**/coverage.cobertura.xml
+          retention-days: 1
+
+  coverage:
+    name: Backend coverage floor
+    runs-on: ubuntu-latest
+    needs: [backend, integration]
+
+    # Neither suite reaches the floor alone — the repositories are only exercised by the
+    # integration tests, the handlers only by the unit tests. The floor applies to the merged
+    # figure, so it has to run after both and combine their reports.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download coverage
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: TestResults
+          pattern: coverage-*
+          merge-multiple: false
+      - name: Check the floor
+        run: ./scripts/check-coverage.sh ./TestResults 90
 
   frontend:
     name: Frontend unit tests (Vitest)
@@ -33,8 +107,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install
         run: npm ci --no-audit --no-fund
-      - name: Test
-        run: npm test
+
+      # Thresholds live in vitest.config.ts, so this fails the job if coverage regresses.
+      - name: Test with coverage
+        run: npm run test:coverage
       - name: Build (type-check + bundle)
         run: npm run build
 

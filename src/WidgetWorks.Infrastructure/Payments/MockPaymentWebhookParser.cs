@@ -13,6 +13,8 @@ public sealed class MockPaymentWebhookParser(IOptions<MockPaymentOptions> option
 {
     public string Provider => "Mock";
 
+    public IReadOnlyList<string> SignatureHeaders { get; } = ["X-Webhook-Signature"];
+
     public bool TryParse(string payload, string? signatureHeader, out PaymentEvent? evt, out string? error)
     {
         evt = null;

@@ -151,7 +151,17 @@ public sealed class InMemoryCartRepository : ICartRepository
         return Task.CompletedTask;
     }
 
-    public Task TouchAsync(Guid cartId, DateTimeOffset now, CancellationToken ct) => Task.CompletedTask;
+    public Task TouchAsync(Guid cartId, DateTimeOffset now, CancellationToken ct)
+    {
+        // Mirrors the real repository, which stamps updated_at -- a no-op here would let a handler
+        // forget to touch the cart and still pass.
+        if (Store.TryGetValue(cartId, out var cart))
+        {
+            cart.UpdatedAt = now;
+        }
+
+        return Task.CompletedTask;
+    }
 
     private static Cart Clone(Cart c) => new()
     {

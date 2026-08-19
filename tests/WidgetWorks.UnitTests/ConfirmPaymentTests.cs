@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Checkout.ConfirmPayment;
 using WidgetWorks.Application.Checkout.PlaceOrder;
+using WidgetWorks.Application.Pricing;
 using WidgetWorks.Domain.Catalog;
 using WidgetWorks.Domain.Orders;
 using WidgetWorks.Infrastructure.Payments;
@@ -31,8 +32,7 @@ public class ConfirmPaymentTests
 
         var orders = new InMemoryOrderRepository(widgets);
         var email = new FakeEmailSender();
-        var handler = new CheckoutHandler(carts, widgets, orders, new FlatRateShippingCalculator(),
-            new StateSalesTaxCalculator(new StaticStateTaxRateProvider()), new MockPaymentGateway(), email, Clock());
+        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), email, Clock());
 
         var result = await handler.Handle(
             new CheckoutCommand(cart.Id, null, "jane@example.com", Address(), "Standard", "klarna_demo"), CancellationToken.None);

@@ -7,15 +7,13 @@ namespace WidgetWorks.Application.Orders.UpdateStatus;
 
 public sealed record UpdateOrderStatusCommand(Guid OrderId, string Status, string? TrackingNumber);
 
+/// <summary>
+/// Drives fulfilment. The legal transitions belong to the order itself (see
+/// <see cref="Order.TransitionTo"/>); this handler asks permission, persists what the entity
+/// decided, and notifies the customer.
+/// </summary>
 public sealed class UpdateOrderStatusHandler(IOrderRepository orders, IEmailSender email, TimeProvider clock)
 {
-    // Allowed forward transitions. Anything not listed is rejected.
-    private static readonly IReadOnlyDictionary<string, string[]> Allowed = new Dictionary<string, string[]>
-    {
-        [OrderStatus.Paid] = [OrderStatus.Shipped, OrderStatus.Cancelled],
-        [OrderStatus.Shipped] = [OrderStatus.Delivered],
-    };
-
     public async Task<Result<OrderView>> Handle(UpdateOrderStatusCommand command, CancellationToken ct)
     {
         var order = await orders.GetByIdAsync(command.OrderId, ct);
@@ -25,17 +23,15 @@ public sealed class UpdateOrderStatusHandler(IOrderRepository orders, IEmailSend
         }
 
         var target = (command.Status ?? string.Empty).Trim();
-        if (!Allowed.TryGetValue(order.Status, out var next) || Array.IndexOf(next, target) < 0)
+        if (!order.CanTransitionTo(target))
         {
+            // Asked, not caught: a refused transition is an expected outcome here, not an exception.
             return Result<OrderView>.Fail($"Cannot change status from {order.Status} to '{target}'.");
         }
 
         var now = clock.GetUtcNow();
-        var tracking = string.IsNullOrWhiteSpace(command.TrackingNumber) ? order.TrackingNumber : command.TrackingNumber.Trim();
-        await orders.UpdateStatusAsync(order.Id, target, tracking, now, ct);
-        order.Status = target;
-        order.TrackingNumber = tracking;
-        order.UpdatedAt = now;
+        order.TransitionTo(target, command.TrackingNumber, now);
+        await orders.UpdateStatusAsync(order.Id, order.Status, order.TrackingNumber, now, ct);
 
         try
         {

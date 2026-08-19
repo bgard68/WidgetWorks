@@ -1,5 +1,6 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Carts;
+using WidgetWorks.Application.Pricing;
 using WidgetWorks.Domain.Common;
 
 namespace WidgetWorks.Application.Checkout.Quote;
@@ -21,8 +22,7 @@ public sealed record OrderQuoteView(
 public sealed class QuoteCartHandler(
     ICartRepository carts,
     IWidgetRepository widgets,
-    IShippingCalculator shipping,
-    ITaxCalculator tax)
+    OrderPricer pricer)
 {
     public async Task<Result<OrderQuoteView>> Handle(QuoteCartCommand command, CancellationToken ct)
     {
@@ -33,21 +33,17 @@ public sealed class QuoteCartHandler(
         }
 
         var view = await CartAssembler.BuildAsync(cart, widgets, ct);
-        var ship = shipping.Calculate(command.ShippingMethod, view.Subtotal, view.ItemCount);
-        var shippingAmount = view.ItemCount == 0 ? 0m : ship.Amount;
-        var taxLine = tax.Calculate(command.StateCode, view.Subtotal);
-        var total = view.Subtotal + shippingAmount + taxLine.Amount;
+        var priced = pricer.Price(view, command.StateCode, command.ShippingMethod);
 
-        var quote = new OrderQuoteView(
-            view.Subtotal,
-            ship.Method,
-            shippingAmount,
-            taxLine.StateCode,
-            taxLine.Rate,
-            taxLine.Amount,
-            total,
-            view.ItemCount,
-            view.ItemCount == 0);
-        return Result<OrderQuoteView>.Success(quote);
+        return Result<OrderQuoteView>.Success(new OrderQuoteView(
+            priced.Subtotal,
+            priced.ShippingMethod,
+            priced.Shipping,
+            priced.StateCode,
+            priced.TaxRate,
+            priced.Tax,
+            priced.Total,
+            priced.ItemCount,
+            priced.IsEmpty));
     }
 }

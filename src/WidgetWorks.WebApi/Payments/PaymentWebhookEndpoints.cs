@@ -29,7 +29,9 @@ public static class PaymentWebhookEndpoints
                 payload = await reader.ReadToEndAsync(ct);
             }
 
-            var signature = FirstHeader(request, "Stripe-Signature") ?? FirstHeader(request, "X-Webhook-Signature");
+            var signature = parser.SignatureHeaders
+                .Select(name => FirstHeader(request, name))
+                .FirstOrDefault(value => value is not null);
 
             if (!parser.TryParse(payload, signature, out var evt, out var error) || evt is null)
             {

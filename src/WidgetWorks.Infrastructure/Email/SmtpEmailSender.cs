@@ -15,24 +15,7 @@ public sealed class SmtpEmailSender(EmailOptions options) : IEmailSender
 {
     public async Task SendAsync(EmailMessage message, CancellationToken ct)
     {
-        using var mail = new MailMessage
-        {
-            From = new MailAddress(options.FromAddress, options.FromName),
-            Subject = message.Subject,
-            SubjectEncoding = Encoding.UTF8,
-
-            // The plain-text version IS the body, and the HTML version rides alongside as the
-            // preferred alternative — the canonical multipart/alternative shape. Leaving Body
-            // empty and adding BOTH text and HTML as alternate views produced a message whose
-            // HTML part mail clients rendered as blank.
-            Body = message.TextBody,
-            BodyEncoding = Encoding.UTF8,
-            IsBodyHtml = false,
-        };
-
-        mail.To.Add(message.To);
-        mail.AlternateViews.Add(
-            AlternateView.CreateAlternateViewFromString(message.HtmlBody, Encoding.UTF8, MediaTypeNames.Text.Html));
+        using var mail = BuildMailMessage(options, message);
 
         using var client = new SmtpClient(options.Host, options.Port)
         {
@@ -53,5 +36,34 @@ public sealed class SmtpEmailSender(EmailOptions options) : IEmailSender
             Console.WriteLine($"[email] FAILED to send \"{message.Subject}\" to {message.To}: {ex.Message}");
             throw;
         }
+    }
+
+    /// <summary>
+    /// Builds the MIME message. Separated from delivery so its shape can be asserted without an SMTP
+    /// server — this is where the bugs actually were: an HTML part that rendered blank, and headers
+    /// that mangled non-ASCII subjects.
+    /// </summary>
+    public static MailMessage BuildMailMessage(EmailOptions options, EmailMessage message)
+    {
+        var mail = new MailMessage
+        {
+            From = new MailAddress(options.FromAddress, options.FromName),
+            Subject = message.Subject,
+            SubjectEncoding = Encoding.UTF8,
+
+            // The plain-text version IS the body, and the HTML version rides alongside as the
+            // preferred alternative — the canonical multipart/alternative shape. Leaving Body
+            // empty and adding BOTH text and HTML as alternate views produced a message whose
+            // HTML part mail clients rendered as blank.
+            Body = message.TextBody,
+            BodyEncoding = Encoding.UTF8,
+            IsBodyHtml = false,
+        };
+
+        mail.To.Add(message.To);
+        mail.AlternateViews.Add(
+            AlternateView.CreateAlternateViewFromString(message.HtmlBody, Encoding.UTF8, MediaTypeNames.Text.Html));
+
+        return mail;
     }
 }

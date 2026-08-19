@@ -22,18 +22,20 @@ export function useCartId(id: string) {
 /**
  * Renders a component inside the providers it expects, on a memory router so navigation is
  * observable without a browser. `at` sets the starting URL; any route in `routes` renders a
- * marker so a redirect can be asserted by what lands on screen.
+ * marker so a redirect can be asserted by what lands on screen; `state` seeds router location
+ * state, which is how the confirmation page receives its order. `path` supplies the route
+ * pattern when the URL carries params (e.g. at='/widgets/w-1', path='/widgets/:id').
  */
 export function renderWithProviders(
   ui: ReactElement,
-  { at = '/', routes = {} as Record<string, ReactNode> } = {},
+  { at = '/', path = '', routes = {} as Record<string, ReactNode>, state = undefined as unknown } = {},
 ): RenderResult {
   return render(
-    <MemoryRouter initialEntries={[at]}>
+    <MemoryRouter initialEntries={[state === undefined ? at : { pathname: at, state }]}>
       <AuthProvider>
         <CartProvider>
           <Routes>
-            <Route path={at} element={ui} />
+            <Route path={path || at} element={ui} />
             {Object.entries(routes).map(([path, element]) => (
               <Route key={path} path={path} element={element} />
             ))}

@@ -236,6 +236,18 @@ if (-not $SkipInfra) {
         'Email__Provider'                 = 'Dev'
     }
     Write-Ok 'Set (secrets are Key Vault references, not values)'
+
+    # ------------------------------------------------ 7. Static Web App ------
+    # Created here, with the rest of the infrastructure, rather than beside the SPA upload:
+    # the site is a resource, publishing to it is a deployment, and -SkipDeploy should still
+    # leave you with a complete environment.
+    Write-Step "Static Web App '$SwaName'"
+    $null = & az staticwebapp show --name $SwaName --resource-group $ResourceGroup --output none 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Invoke-Az staticwebapp create --name $SwaName --resource-group $ResourceGroup `
+            --location $SwaLocation --sku Free --output none | Out-Null
+    } else { Write-Host '  (already exists)' }
+    Write-Ok 'Ready'
 }
 
 $ApiHost = (Invoke-Az webapp show --name $AppName --resource-group $ResourceGroup --query defaultHostName -o tsv)
@@ -310,10 +322,6 @@ if (-not $healthy) {
 }
 
 # ----------------------------------------------------------- 9. SPA + SWA ----
-Write-Step "Static Web App '$SwaName'"
-Invoke-Az staticwebapp create --name $SwaName --resource-group $ResourceGroup `
-    --location $SwaLocation --sku Free --output none | Out-Null
-
 # Vite inlines these at BUILD time, so the API must already exist. Both are public values.
 Write-Step 'Building the SPA (production)'
 $env:VITE_API_BASE_URL    = $ApiUrl

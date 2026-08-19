@@ -1,0 +1,74 @@
+name: Deploy web
+
+# Fires ONLY for changes under web/. `paths` is an allowlist, so a docs-only or API-only commit
+# does not match and no deployment runs. The API has its own workflow; neither is triggered by
+# markdown.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy-web.yml'
+      - '.github/workflows/test-suite.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+jobs:
+  # The same gate the API deploy uses. The SPA is useless against a broken API, so the
+  # end-to-end smoke test guards this deployment too, not just the frontend unit tests.
+  tests:
+    name: Tests
+    uses: ./.github/workflows/test-suite.yml
+
+  deploy:
+    name: Build and deploy the SPA
+    needs: tests
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: web
+    env:
+      # Public build-time config from Actions Variables. Vite inlines both into the bundle, so
+      # neither may ever be a secret: VITE_* values ship to every browser.
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      # staticwebapp.config.json ships a placeholder because the API hostname is not known at
+      # authoring time. Without this substitution the CSP blocks every call the SPA makes to its
+      # own API, and Google sign-in fails silently.
+      - name: Point the CSP at the API
+        run: |
+          test -n "$VITE_API_BASE_URL" || { echo "::error::VITE_API_BASE_URL variable is not set"; exit 1; }
+          cfg=dist/staticwebapp.config.json
+          test -f "$cfg" || { echo "::error::$cfg missing — it must live in web/public/"; exit 1; }
+          sed -i "s|https://REPLACE_API_ORIGIN|${VITE_API_BASE_URL}|" "$cfg"
+          if grep -q REPLACE_API_ORIGIN "$cfg"; then
+            echo "::error::CSP placeholder not substituted"; exit 1
+          fi
+          grep -o "connect-src[^;]*" "$cfg"
+
+      # Uploads dist/ only — the built bundle, never the source tree.
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: web/dist
+          skip_app_build: true
+          skip_api_build: true

@@ -1,0 +1,112 @@
+name: Deploy API
+
+# Fires ONLY for changes that can affect the compiled API. `paths` is an allowlist, so a
+# docs-only or web-only commit simply does not match and no deployment runs — the SPA has its
+# own workflow, and neither is triggered by markdown.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'Directory.Build.props'
+      - 'global.json'
+      - 'WidgetWorks.slnx'
+      - 'Dockerfile.api'
+      - 'docker-compose.yml'
+      - 'scripts/smoke-test.ps1'
+      - '.github/workflows/deploy-api.yml'
+      - '.github/workflows/test-suite.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+env:
+  APP_NAME: widgetworks-api-41d09d
+  RESOURCE_GROUP: rg-widgetworks
+
+jobs:
+  # The gate. Backend units, frontend units and the end-to-end smoke test must all pass;
+  # `needs: tests` below means a single failure stops the deployment entirely.
+  tests:
+    name: Tests
+    uses: ./.github/workflows/test-suite.yml
+
+  deploy:
+    name: Publish and deploy the API
+    needs: tests
+    runs-on: ubuntu-latest
+    environment: production
+    # No stored Azure credential: id-token lets the job exchange a short-lived GitHub OIDC
+    # token for an Azure one. contents:read is all the checkout needs.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '10.0.x'
+
+      # Publish to a directory OUTSIDE the workspace, so the artifact cannot pick up the
+      # repository. Deploying the repo would serve .cs sources and git history from wwwroot.
+      - name: Publish (Release)
+        run: dotnet publish src/WidgetWorks.WebApi/WidgetWorks.WebApi.csproj -c Release -o "${{ runner.temp }}/publish" --nologo
+
+      - name: Audit the publish output
+        run: |
+          cd "${{ runner.temp }}/publish"
+          bad=$(find . \( -name '*.cs' -o -name '*.csproj' -o -name '*.sln*' -o -name '.env' \
+                          -o -name 'docker-compose*.yml' \) -print)
+          for d in .git node_modules src web tests docs; do
+            [ -e "$d" ] && bad="$bad $d/"
+          done
+          if [ -n "$(printf '%s' "$bad" | tr -d '[:space:]')" ]; then
+            echo "::error::Publish output contains files that must never be deployed:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          test -f WidgetWorks.WebApi.dll || { echo "::error::app dll missing"; exit 1; }
+          test -f appsettings.json      || { echo "::error::appsettings.json missing"; exit 1; }
+          echo "Clean: $(find . -type f | wc -l) build-output files"
+
+      - name: Azure login (OIDC — no stored credential)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy
+        uses: azure/webapps-deploy@2fdd5c3ebb4e540834e86ecc1f6fdcd5539023ee # v3.0.2
+        with:
+          app-name: ${{ env.APP_NAME }}
+          package: ${{ runner.temp }}/publish
+
+      # The API degrades to a 503 rather than crash-looping when the database is unreachable,
+      # so a bad deploy shows up here instead of silently eating the F1 tier's CPU quota.
+      - name: Health check (stops the app if unhealthy)
+        run: |
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+              "https://${{ env.APP_NAME }}.azurewebsites.net/health" || true)
+            if [ "$code" = "200" ]; then echo "healthy"; exit 0; fi
+            if [ "$code" = "503" ]; then
+              echo "::error::App is up but unhealthy (database unreachable). Stopping it to protect CPU quota."
+              az webapp stop --name "${{ env.APP_NAME }}" --resource-group "${{ env.RESOURCE_GROUP }}"
+              exit 1
+            fi
+            echo "  $code (attempt $i/20)"
+            sleep 6
+          done
+          echo "::error::No healthy response; stopping the app to protect CPU quota."
+          az webapp stop --name "${{ env.APP_NAME }}" --resource-group "${{ env.RESOURCE_GROUP }}"
+          exit 1

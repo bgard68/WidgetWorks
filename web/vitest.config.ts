@@ -23,6 +23,14 @@ export default defineConfig({
         'src/main.tsx',
         'src/api/types.ts',
       ],
+      // A floor, not a target: it catches a regression rather than inviting tests written to
+      // hit a number. `npm run test:coverage` fails the run when coverage drops below it.
+      thresholds: {
+        statements: 80,
+        branches: 70,
+        functions: 80,
+        lines: 82,
+      },
     },
   },
 })

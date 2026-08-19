@@ -22,6 +22,7 @@ using WidgetWorks.Application.Checkout.Quote;
 using WidgetWorks.Application.Orders.Admin;
 using WidgetWorks.Application.Orders.GetMine;
 using WidgetWorks.Application.Orders.ListMine;
+using WidgetWorks.Application.Orders.ListRecent;
 using WidgetWorks.Application.Orders.Lookup;
 using WidgetWorks.Application.Orders.UpdateStatus;
 using WidgetWorks.Application.Security.SecureAccount;
@@ -67,6 +68,8 @@ public static class DependencyInjection
         services.AddScoped<ConfirmPaymentHandler>();
         services.AddScoped<GuestOrderLookupHandler>();
         services.AddScoped<ListMyOrdersHandler>();
+
+        services.AddScoped<ListRecentOrdersHandler>();
         services.AddScoped<GetMyOrderHandler>();
         services.AddScoped<GetOrderByIdHandler>();
         services.AddScoped<UpdateOrderStatusHandler>();

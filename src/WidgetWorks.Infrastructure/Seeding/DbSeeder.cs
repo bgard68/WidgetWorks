@@ -14,6 +14,15 @@ public sealed class SeedOptions
     public string DemoCustomerEmail { get; set; } = string.Empty;
 
     public string DemoCustomerPassword { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The middle role. Without a seeded Manager the demo cannot show what ManageCatalog actually
+    /// buys you — a Manager may create, edit, restock and hide a widget but not retire one, which
+    /// is the whole point of the Administrator-only DeleteCatalog policy.
+    /// </summary>
+    public string DemoManagerEmail { get; set; } = string.Empty;
+
+    public string DemoManagerPassword { get; set; } = string.Empty;
 }
 
 public sealed class DbSeeder(IDbConnectionFactory factory, IPasswordHasher hasher, TimeProvider clock)
@@ -31,6 +40,7 @@ public sealed class DbSeeder(IDbConnectionFactory factory, IPasswordHasher hashe
     {
         await UpsertUserAsync(options.DemoAdminEmail, options.DemoAdminPassword, UserRoles.Administrator, isProtected: true, ct);
         await UpsertUserAsync(options.DemoCustomerEmail, options.DemoCustomerPassword, UserRoles.Customer, isProtected: false, ct);
+        await UpsertUserAsync(options.DemoManagerEmail, options.DemoManagerPassword, UserRoles.Manager, isProtected: false, ct);
         await SeedWidgetsAsync(ct);
     }
 

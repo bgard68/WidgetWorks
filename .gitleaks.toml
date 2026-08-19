@@ -56,6 +56,22 @@ description = "PostgreSQL connection string with embedded password"
 regex = '''(?i)(host|server)=[^;]+;.*password=[^;'"\s]+'''
 keywords = ["password="]
 
+  # Loopback only. MigrationRunnerTests points at 127.0.0.1:1 precisely because nothing listens
+  # there, so the retry/degrade path can be exercised without a database. A credential that only
+  # addresses the local machine grants access to nothing remote. Scoped to this rule and matched
+  # against the whole line (the default target is the captured secret, which is why a top-level
+  # allowlist entry silently had no effect); a real remote connection string in that same file
+  # would still be caught.
+  [rules.allowlist]
+  regexTarget = "line"
+  regexes = [
+    '''(?i)(host|server)=(127\.0\.0\.1|localhost|::1)\b''',
+    # A "password" whose value is literally an ellipsis is a format example, not a credential.
+    # Earlier commits of infra/Provision.ps1 printed one as prompt help; the script now lists the
+    # keys instead, but CI scans full history, so the pattern has to stay recognised.
+    '''(?i)password=(\.\.\.|…)''',
+  ]
+
 [[rules]]
 id = "widgetworks-jwt-signing-key"
 description = "Hard-coded JWT signing key in config"

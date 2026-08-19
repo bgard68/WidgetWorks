@@ -176,7 +176,11 @@ if (-not $SkipInfra) {
             $plain = $env:WW_NEON_CONNECTION_STRING
             if ([string]::IsNullOrWhiteSpace($plain)) {
                 Write-Host '  Paste the Neon connection string (input hidden), or set WW_NEON_CONNECTION_STRING and re-run.'
-                Write-Host '  Host=...neon.tech;Database=neondb;Username=...;Password=...;SSL Mode=Require;Trust Server Certificate=true;Timeout=30;Command Timeout=60'
+                # Listed as keys rather than one line: a full connection-string example here
+                # trips the repo's own gitleaks rule, and this file is exactly where a real one
+                # could be pasted by mistake, so the rule should stay sharp for it.
+                Write-Host '  Keys, semicolon-separated: Host / Database / Username / Password /'
+                Write-Host '  SSL Mode=Require / Trust Server Certificate=true / Timeout=30 / Command Timeout=60'
                 $secure = Read-Host -AsSecureString '  Connection string'
                 $plain  = [System.Net.NetworkCredential]::new('', $secure).Password
             }

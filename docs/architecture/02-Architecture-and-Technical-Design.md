@@ -321,7 +321,7 @@ Recommended default: a **composite** of small strategies so the calculation is v
 ## 11. Migrations without EF
 
 - **DbUp** runs ordered, embedded **`.sql`** scripts on startup, tracking applied scripts in a journal table. Plain SQL keeps us "close to production" and reviewable.
-- Seed data ships as idempotent scripts including **two demo accounts** documented in the README: (1) an **immutable admin** (`admin@widgetworks.demo`) managing widgets/inventory/orders, and (2) a **demo customer** (`demo@widgetworks.demo`). Plus categories and sample **widgets**, each with a name, description, product image, price, weight, and opening quantity on hand (`quantity_reserved = 0`).
+- Seed data ships as idempotent scripts including **three demo accounts** documented in the README: (1) an **immutable admin** (`admin@widgetworks.demo`) managing widgets/inventory/orders, (2) a **manager** (`manager@widgetworks.demo`) with catalog and order-fulfilment rights but no delete or user management, and (3) a **demo customer** (`demo@widgetworks.demo`). Plus categories and sample **widgets**, each with a name, description, product image, price, weight, and opening quantity on hand (`quantity_reserved = 0`).
 - Alternative: **FluentMigrator** for C#‑authored migrations with up/down.
 
 ---

@@ -42,13 +42,21 @@ hybrid-dev Vite is `:5173`):
 dotnet user-secrets set "App:BaseUrl" "http://localhost:5173"
 ```
 
-### Test with a real inbox UI — Mailpit (optional)
+### Test with a real inbox UI — Mailpit
 
-A local SMTP catcher gives you a browser inbox without sending anything externally:
+A local SMTP catcher gives you a browser inbox — with the real HTML — without sending
+anything externally. **`docker compose` already runs one**, so under Docker you only need to
+point the app at it. In `.env`:
 
-```bash
-docker run -d --name mailpit -p 8025:8025 -p 1025:1025 axllent/mailpit
 ```
+Email__Provider=Smtp
+Email__Host=mailpit
+Email__Port=1025
+Email__UseStartTls=false
+```
+
+Running the API on the host instead (hybrid dev), the same settings go to user-secrets and
+the host is `localhost`:
 
 ```bash
 dotnet user-secrets set "Email:Provider" "Smtp"
@@ -57,7 +65,8 @@ dotnet user-secrets set "Email:Port" "1025"
 dotnet user-secrets set "Email:UseStartTls" "false"
 ```
 
-Trigger an email and read it at **http://localhost:8025**.
+**`UseStartTls` must be `false`** — port 1025 is plain SMTP, and leaving STARTTLS on makes
+every send fail. Trigger an email and read it at **http://localhost:8025**.
 
 ### Go live — real SMTP
 

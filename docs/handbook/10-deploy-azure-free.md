@@ -15,6 +15,30 @@ hard-coded, so the script survives being re-run against a different subscription
 
 ---
 
+## The short version
+
+Everything below is automated by `infra/Provision.ps1`. Look at what it plans first:
+
+```powershell
+./infra/Provision.ps1 -WhatIf
+```
+
+Then run it:
+
+```powershell
+./infra/Provision.ps1
+```
+
+It creates the group, vault, plan, web app and Static Web App; generates the JWT signing key
+straight into the vault; prompts once (hidden) for the Neon connection string; wires the managed
+identity; publishes a **Release** build; audits that output before packaging; deploys; polls
+`/health`; and **stops the app** if it comes back unhealthy so a broken configuration cannot eat
+the F1 tier's daily CPU allowance. It is idempotent — re-run it freely. `-SkipInfra` redeploys code
+only; `-SkipDeploy` provisions without deploying.
+
+The rest of this chapter explains what it does and why, and gives the equivalent commands if you
+would rather drive each step by hand.
+
 ## Ground rules
 
 **Never deploy the repository.** Publish the API to a clean folder and deploy *only that folder*.

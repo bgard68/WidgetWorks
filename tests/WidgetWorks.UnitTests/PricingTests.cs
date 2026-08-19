@@ -1,4 +1,5 @@
 using WidgetWorks.Application.Checkout.Quote;
+using WidgetWorks.Application.Pricing;
 using WidgetWorks.Domain.Catalog;
 using WidgetWorks.Infrastructure.Pricing;
 using WidgetWorks.UnitTests.Fakes;
@@ -73,7 +74,7 @@ public class PricingTests
         var cart = await carts.CreateAsync(null, CancellationToken.None);
         await carts.UpsertItemAsync(cart.Id, widget.Id, 2, default, CancellationToken.None);
 
-        var handler = new QuoteCartHandler(carts, widgets, _shipping, _tax);
+        var handler = new QuoteCartHandler(carts, widgets, new OrderPricer(_shipping, _tax));
         var result = await handler.Handle(new QuoteCartCommand(cart.Id, "CA", "Standard"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -91,7 +92,7 @@ public class PricingTests
         var carts = new InMemoryCartRepository();
         var cart = await carts.CreateAsync(null, CancellationToken.None);
 
-        var handler = new QuoteCartHandler(carts, widgets, _shipping, _tax);
+        var handler = new QuoteCartHandler(carts, widgets, new OrderPricer(_shipping, _tax));
         var result = await handler.Handle(new QuoteCartCommand(cart.Id, "CA", "Standard"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);

@@ -15,6 +15,8 @@ public sealed class StripePaymentWebhookParser(IOptions<StripeOptions> options) 
 {
     public string Provider => "Stripe";
 
+    public IReadOnlyList<string> SignatureHeaders { get; } = ["Stripe-Signature"];
+
     public bool TryParse(string payload, string? signatureHeader, out PaymentEvent? evt, out string? error)
     {
         evt = null;

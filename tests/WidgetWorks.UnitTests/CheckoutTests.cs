@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application.Checkout.PlaceOrder;
+using WidgetWorks.Application.Pricing;
 using WidgetWorks.Domain.Catalog;
 using WidgetWorks.Domain.Orders;
 using WidgetWorks.Infrastructure.Payments;
@@ -33,8 +34,7 @@ public class CheckoutTests
     }
 
     private static CheckoutHandler Handler(Ctx c, MockPaymentGateway gateway, FakeEmailSender email)
-        => new(c.Carts, c.Widgets, c.Orders, new FlatRateShippingCalculator(),
-            new StateSalesTaxCalculator(new StaticStateTaxRateProvider()), gateway, email, Clock());
+        => new(c.Carts, c.Widgets, c.Orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), gateway, email, Clock());
 
     [Fact]
     public async Task Successful_checkout_pays_reserves_clears_cart_and_emails_receipt()
@@ -113,8 +113,7 @@ public class CheckoutTests
         var carts = new InMemoryCartRepository();
         var cart = await carts.CreateAsync(null, CancellationToken.None);
         var orders = new InMemoryOrderRepository(widgets);
-        var handler = new CheckoutHandler(carts, widgets, orders, new FlatRateShippingCalculator(),
-            new StateSalesTaxCalculator(new StaticStateTaxRateProvider()), new MockPaymentGateway(), new FakeEmailSender(), Clock());
+        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), new FakeEmailSender(), Clock());
 
         var result = await handler.Handle(new CheckoutCommand(cart.Id, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
 

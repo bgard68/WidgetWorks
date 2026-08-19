@@ -1,6 +1,7 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Carts;
 using WidgetWorks.Application.Notifications;
+using WidgetWorks.Application.Pricing;
 using WidgetWorks.Domain.Common;
 using WidgetWorks.Domain.Orders;
 
@@ -36,8 +37,7 @@ public sealed class CheckoutHandler(
     ICartRepository carts,
     IWidgetRepository widgets,
     IOrderRepository orders,
-    IShippingCalculator shipping,
-    ITaxCalculator tax,
+    OrderPricer pricer,
     IPaymentGateway payments,
     IEmailSender email,
     TimeProvider clock)
@@ -75,45 +75,10 @@ public sealed class CheckoutHandler(
         }
 
         // Re-price server-side; never trust client-supplied totals.
-        var shippingQuote = shipping.Calculate(command.ShippingMethod, view.Subtotal, view.ItemCount);
-        var taxLine = tax.Calculate(ship.State, view.Subtotal);
-        var total = view.Subtotal + shippingQuote.Amount + taxLine.Amount;
+        var priced = pricer.Price(view, ship.State, command.ShippingMethod);
 
         var now = clock.GetUtcNow();
-        var order = new Order
-        {
-            Id = Guid.NewGuid(),
-            OrderNumber = $"WW-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}",
-            UserId = command.UserId,
-            Email = normalizedEmail,
-            ShipName = ship.Name?.Trim() ?? string.Empty,
-            ShipLine1 = ship.Line1.Trim(),
-            ShipLine2 = string.IsNullOrWhiteSpace(ship.Line2) ? null : ship.Line2.Trim(),
-            ShipCity = ship.City.Trim(),
-            ShipState = ship.State.Trim().ToUpperInvariant(),
-            ShipPostalCode = ship.PostalCode.Trim(),
-            ShipCountry = string.IsNullOrWhiteSpace(ship.Country) ? "US" : ship.Country.Trim().ToUpperInvariant(),
-            Subtotal = view.Subtotal,
-            ShippingMethod = shippingQuote.Method,
-            Shipping = shippingQuote.Amount,
-            TaxState = taxLine.StateCode,
-            TaxRate = taxLine.Rate,
-            Tax = taxLine.Amount,
-            Total = total,
-            Status = OrderStatus.Pending,
-            CreatedAt = now,
-            UpdatedAt = now,
-            Items = view.Items.Select(l => new OrderItem
-            {
-                Id = Guid.NewGuid(),
-                WidgetId = l.WidgetId,
-                Sku = l.Sku,
-                Name = l.Name,
-                UnitPrice = l.UnitPrice,
-                Quantity = l.Quantity,
-                LineSubtotal = l.LineSubtotal,
-            }).ToList(),
-        };
+        var order = OrderDraft.Create(view, priced, ship, normalizedEmail, command.UserId, now, Guid.NewGuid(), Guid.NewGuid);
 
         var placed = await orders.TryPlaceAsync(order, ct);
         if (!placed)

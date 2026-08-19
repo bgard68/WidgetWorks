@@ -43,5 +43,5 @@ public sealed record OrderView(
 
 public sealed record OrderSummary(Guid Id, string OrderNumber, string Status, decimal Total, int ItemCount, DateTimeOffset CreatedAt)
 {
-    public static OrderSummary From(Order o) => new(o.Id, o.OrderNumber, o.Status, o.Total, o.Items.Sum(i => i.Quantity), o.CreatedAt);
+    public static OrderSummary From(Order o) => new(o.Id, o.OrderNumber, o.Status, o.Total, o.UnitCount, o.CreatedAt);
 }

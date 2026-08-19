@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+
+          <!--
+            Excluded on purpose, with a reason each:
+
+            *.DependencyInjection / Program — composition roots. They are one long list of
+            registrations; a test that asserts "AddScoped was called" restates the code rather
+            than checking behaviour, and the smoke test already proves the container resolves.
+
+            Migrations/*.sql runner internals are covered by the integration suite; the generated
+            and attribute-marked members below are compiler artifacts.
+          -->
+          <Exclude>[*]*.DependencyInjection,[WidgetWorks.WebApi]Program</Exclude>
+          <!--
+            CompilerGeneratedAttribute is deliberately NOT listed: every async method compiles to a
+            state machine carrying it, so excluding it silently drops almost the whole codebase from
+            measurement and reports a number that means nothing.
+          -->
+          <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+          <SingleHit>false</SingleHit>
+          <UseSourceLink>false</UseSourceLink>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

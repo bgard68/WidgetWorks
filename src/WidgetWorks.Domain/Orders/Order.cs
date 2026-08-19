@@ -15,6 +15,25 @@ public static class OrderStatus
     public const string Shipped = "Shipped";
     public const string Delivered = "Delivered";
     public const string Cancelled = "Cancelled";
+
+    /// <summary>
+    /// The fulfilment state machine. Only a settled (Paid) order can ship or be cancelled, and only
+    /// a shipped one can be delivered -- so an order still awaiting payment can never be dispatched.
+    /// Everything absent from this table is a forbidden transition, including any move out of a
+    /// terminal state.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> Transitions = new(StringComparer.Ordinal)
+    {
+        [Paid] = [Shipped, Cancelled],
+        [Shipped] = [Delivered],
+    };
+
+    /// <summary>The statuses an order in <paramref name="from"/> may legally move to.</summary>
+    public static IReadOnlyList<string> AllowedNext(string? from)
+        => from is not null && Transitions.TryGetValue(from, out var next) ? next : [];
+
+    public static bool CanTransition(string? from, string? to)
+        => to is not null && AllowedNext(from).Contains(to, StringComparer.Ordinal);
 }
 
 /// <summary>A placed order with a shipping address, computed totals, payment result, and line items.</summary>
@@ -70,6 +89,28 @@ public sealed class Order
     public DateTimeOffset UpdatedAt { get; set; }
 
     public List<OrderItem> Items { get; set; } = [];
+
+    /// <summary>Number of units on the order (quantities summed, not lines counted).</summary>
+    public int UnitCount => Items.Sum(i => i.Quantity);
+
+    public bool CanTransitionTo(string? target) => OrderStatus.CanTransition(Status, target);
+
+    /// <summary>
+    /// Applies a fulfilment transition, keeping the rule with the data it guards. A blank tracking
+    /// number leaves the existing one alone rather than erasing it. Callers that want to report a
+    /// refusal rather than throw should ask <see cref="CanTransitionTo"/> first.
+    /// </summary>
+    public void TransitionTo(string target, string? trackingNumber, DateTimeOffset now)
+    {
+        if (!CanTransitionTo(target))
+        {
+            throw new InvalidOperationException($"Cannot change status from {Status} to '{target}'.");
+        }
+
+        Status = target;
+        TrackingNumber = string.IsNullOrWhiteSpace(trackingNumber) ? TrackingNumber : trackingNumber.Trim();
+        UpdatedAt = now;
+    }
 }
 
 public sealed class OrderItem

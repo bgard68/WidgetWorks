@@ -23,7 +23,11 @@ public class DeleteWidgetTests
         var repo = new InMemoryWidgetRepository();
         var widget = new Widget
         {
-            Id = Guid.NewGuid(), Sku = "WW-900", Name = "Doomed", IsActive = true, QuantityOnHand = 5,
+            Id = Guid.NewGuid(),
+            Sku = "WW-900",
+            Name = "Doomed",
+            IsActive = true,
+            QuantityOnHand = 5,
         };
         repo.Store[widget.Id] = widget;
         if (orderLines > 0)

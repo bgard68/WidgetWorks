@@ -5,6 +5,7 @@ using WidgetWorks.Application.Auth.Logout;
 using WidgetWorks.Application.Auth.PasswordReset;
 using WidgetWorks.Application.Auth.Refresh;
 using WidgetWorks.Application.Auth.Register;
+using WidgetWorks.Application.Pricing;
 using WidgetWorks.Application.Carts.AddItem;
 using WidgetWorks.Application.Carts.GetCart;
 using WidgetWorks.Application.Carts.Merge;
@@ -39,6 +40,7 @@ public static class DependencyInjection
     /// <summary>Registers the application layer (use-case handlers). No MediatR — plain handlers.</summary>
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
+        services.AddScoped<OrderPricer>();
         services.AddScoped<RegisterHandler>();
         services.AddScoped<LoginHandler>();
         services.AddScoped<GoogleLoginHandler>();

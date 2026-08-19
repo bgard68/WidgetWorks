@@ -38,7 +38,7 @@ export function ProductPage() {
         <span className="empty-ico" aria-hidden="true">📦</span>
         <h2>We couldn&apos;t load that widget</h2>
         <p>{error}</p>
-        <Link to="/" className="btn btn-secondary">Back to the shop</Link>
+        <Link to="/store" className="btn btn-secondary">Back to the shop</Link>
       </div>
     )
   }
@@ -46,7 +46,7 @@ export function ProductPage() {
   if (!widget) {
     return (
       <>
-        <nav className="crumbs" aria-label="Breadcrumb"><Link to="/" className="link">Home</Link></nav>
+        <nav className="crumbs" aria-label="Breadcrumb"><Link to="/store" className="link">Home</Link></nav>
         <PanelSkeleton lines={6} />
       </>
     )
@@ -61,9 +61,9 @@ export function ProductPage() {
   return (
     <>
       <nav className="crumbs" aria-label="Breadcrumb">
-        <Link to="/" className="link">Home</Link>
+        <Link to="/store" className="link">Home</Link>
         <span className="sep" aria-hidden="true">›</span>
-        <Link to="/" className="link">All widgets</Link>
+        <Link to="/store" className="link">All widgets</Link>
         <span className="sep" aria-hidden="true">›</span>
         <span className="cur">{widget.name}</span>
       </nav>

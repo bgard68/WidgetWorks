@@ -62,6 +62,7 @@ services:
       Google__ClientId: ${Google__ClientId:-}
       Seed__DemoAdminPassword: ${Seed__DemoAdminPassword:-DemoAdmin!Change01}
       Seed__DemoCustomerPassword: ${Seed__DemoCustomerPassword:-DemoUser!Change01}
+      Seed__DemoManagerPassword: ${Seed__DemoManagerPassword:-DemoManager!Change01}
     ports:
       - "8080:8080"
     depends_on:

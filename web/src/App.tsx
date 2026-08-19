@@ -4,6 +4,7 @@ import { CartProvider } from './cart/CartContext'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { CatalogPage } from './pages/CatalogPage'
+import { DemoGuidePage } from './pages/DemoGuidePage'
 import { ProductPage } from './pages/ProductPage'
 import { CartPage } from './pages/CartPage'
 import { CheckoutPage } from './pages/CheckoutPage'
@@ -24,7 +25,10 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<Layout />}>
-              <Route path="/" element={<CatalogPage />} />
+              {/* The guide is the landing page: a working store is confusing without knowing it is
+                  a demo, that nothing can charge you, and which account to use. */}
+              <Route path="/" element={<DemoGuidePage />} />
+              <Route path="/store" element={<CatalogPage />} />
               <Route path="/widgets/:id" element={<ProductPage />} />
               <Route path="/cart" element={<CartPage />} />
               <Route path="/checkout" element={<CheckoutPage />} />

@@ -55,7 +55,7 @@ export function CheckoutPage() {
         <span className="empty-ico" aria-hidden="true">🧾</span>
         <h2>There is nothing to check out</h2>
         <p>Your cart is empty — add a widget or two and come back.</p>
-        <Link to="/" className="btn btn-primary">Browse widgets</Link>
+        <Link to="/store" className="btn btn-primary">Browse widgets</Link>
       </div>
     )
   }

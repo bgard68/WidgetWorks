@@ -30,7 +30,7 @@ export function CartPage() {
         <span className="empty-ico" aria-hidden="true">🛒</span>
         <h2>Your cart is empty</h2>
         <p>Once you add widgets they will show up here, ready for checkout.</p>
-        <Link to="/" className="btn btn-primary">Start shopping</Link>
+        <Link to="/store" className="btn btn-primary">Start shopping</Link>
       </div>
     )
   }
@@ -40,7 +40,7 @@ export function CartPage() {
   return (
     <>
       <nav className="crumbs" aria-label="Breadcrumb">
-        <Link to="/" className="link">Home</Link>
+        <Link to="/store" className="link">Home</Link>
         <span className="sep" aria-hidden="true">›</span>
         <span className="cur">Shopping cart</span>
       </nav>
@@ -144,7 +144,7 @@ export function CartPage() {
               <button className="btn btn-buy btn-block btn-lg" onClick={() => navigate('/checkout')}>
                 Proceed to checkout
               </button>
-              <Link to="/" className="btn btn-secondary btn-block">Continue shopping</Link>
+              <Link to="/store" className="btn btn-secondary btn-block">Continue shopping</Link>
             </div>
           </div>
         </aside>

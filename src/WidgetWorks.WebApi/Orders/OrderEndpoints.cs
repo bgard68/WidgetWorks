@@ -2,6 +2,7 @@ using System.Security.Claims;
 using WidgetWorks.Application.Orders.Admin;
 using WidgetWorks.Application.Orders.GetMine;
 using WidgetWorks.Application.Orders.ListMine;
+using WidgetWorks.Application.Orders.ListRecent;
 using WidgetWorks.Application.Orders.Lookup;
 using WidgetWorks.Application.Orders.UpdateStatus;
 using WidgetWorks.WebApi.Authorization;
@@ -44,6 +45,13 @@ public static class OrderEndpoints
 
         // Admin/manager order management (ManageCatalog covers widgets, inventory, and orders).
         var admin = routes.MapGroup("/admin/orders").RequireAuthorization(Policies.ManageCatalog);
+
+        // Staff order list. Summary rows only — open one to load its items.
+        admin.MapGet("/", async (int? limit, ListRecentOrdersHandler handler, CancellationToken ct) =>
+        {
+            var result = await handler.Handle(new ListRecentOrdersQuery(limit ?? 50), ct);
+            return Results.Ok(result);
+        });
 
         admin.MapGet("/{id:guid}", async (Guid id, GetOrderByIdHandler handler, CancellationToken ct) =>
         {

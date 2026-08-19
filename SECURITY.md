@@ -24,8 +24,9 @@ artifacts are committed to this repository. This is enforced at three layers:
 
 ### The one sanctioned exception: demo seed accounts
 
-The seeded **demo admin** (`admin@widgetworks.demo`) and **demo customer**
-(`demo@widgetworks.demo`) use documented, throwaway credentials so reviewers can
+The seeded **demo admin** (`admin@widgetworks.demo`), **demo manager**
+(`manager@widgetworks.demo`) and **demo customer** (`demo@widgetworks.demo`) use
+documented, throwaway credentials so reviewers can
 log in. These are intentionally public, are the only "credentials" in the repo,
 and are allowlisted in `.gitleaks.toml`. They grant access only to a local,
 disposable demo database.

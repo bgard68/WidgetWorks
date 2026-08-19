@@ -112,7 +112,8 @@ and (later) cloud/tax-service credentials.
   DB password, JWT signing key, and any future Avalara/TaxJar key) lives in
   user-secrets / Actions secrets / OIDC — **never** the repo.
 - The **only** allowlisted "credentials" are the documented, throwaway **demo
-  accounts** (`admin@widgetworks.demo`, `demo@widgetworks.demo`).
+  accounts** (`admin@widgetworks.demo`, `manager@widgetworks.demo`,
+  `demo@widgetworks.demo`).
 - Enforcement: pre-commit (gitleaks + detect-private-key + forbidden-artifact guard)
   → CI gitleaks gate → recommend enabling GitHub native **secret scanning + push
   protection**.

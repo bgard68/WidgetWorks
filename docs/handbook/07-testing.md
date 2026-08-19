@@ -2,10 +2,11 @@
 
 # 7. Testing & the smoke test
 
-Two layers: fast **unit tests** (logic, no I/O) and an **end-to-end smoke test**
-(the running API over HTTP).
+Three layers: fast **backend unit tests** (logic, no I/O), **frontend unit tests**, and an
+**end-to-end smoke test** (the running API over HTTP). All three are the gate: no deployment
+runs unless every one of them passes.
 
-## Unit tests
+## Backend unit tests
 
 `tests/WidgetWorks.UnitTests` (xUnit) run with in-memory fakes and `FakeTimeProvider`, so
 they’re deterministic and need no database. Coverage includes:
@@ -30,6 +31,25 @@ dotnet test
 ```
 
 CI runs `dotnet build -warnaserror` then `dotnet test` on every code change (see below).
+
+## Frontend unit tests
+
+`web/**/*.test.ts` (Vitest) cover the logic that isn't worth a browser:
+
+- **`api/client.test.ts`** — the token-refresh contract. The important case is the
+  regression test for bug #12: fire several concurrent requests that all get a `401`, and
+  assert the client issues **exactly one** refresh. Refresh tokens rotate, so a second
+  concurrent refresh replays a dead token and signs the user out — the test fails loudly if
+  the single-flight guard is ever removed.
+- **`lib/catalog.test.ts`** — catalog filtering/sorting behaviour.
+
+Run them:
+
+```bash
+cd web && npm test
+```
+
+`npm run build` (tsc + Vite) runs alongside them in CI, so a type error fails the same gate.
 
 ## End-to-end smoke test
 
@@ -80,7 +100,31 @@ Sample:
 | **CodeQL** | code changes (public) | security-extended analysis |
 | **Web CI** | `web/**` changes | `npm run build` (tsc + Vite) |
 | **Smoke test** | code changes (docs ignored) | `docker compose up db api` → wait `/health` → run `smoke-test.ps1` |
+| **Test suite** | called by both deploys | all three layers at once — backend units, frontend units + build, and the smoke test |
+| **Deploy API** | `main`, only for `src/**`, `tests/**`, `Dockerfile.api`, build files | `needs: tests` → publish Release → zip-deploy to App Service |
+| **Deploy web** | `main`, only for `web/**` | `needs: tests` → build the SPA → Static Web Apps |
 
 **Docs-only changes** (`**.md`, `docs/**`) skip CI / CodeQL / Web CI / Smoke — only the
-secret scan runs — so writing documentation never triggers a build. The smoke workflow can
-also be run on demand from the Actions tab (`workflow_dispatch`).
+secret scan runs — so writing documentation never triggers a build **or a deployment**. The
+smoke workflow can also be run on demand from the Actions tab (`workflow_dispatch`).
+
+### The deployment gate
+
+`test-suite.yml` is a **reusable** workflow (`on: workflow_call`) with three jobs — backend
+units, frontend units, smoke test. Both deploy workflows start with:
+
+```yaml
+jobs:
+  tests:
+    uses: ./.github/workflows/test-suite.yml
+  deploy:
+    needs: tests
+```
+
+so a failure in **any** of the three stops the deploy before a single artifact is uploaded.
+The web deploy runs the API smoke test too, deliberately: a SPA is useless against a broken
+API, so it isn't allowed to ship on frontend tests alone.
+
+Triggers are **allowlists**, not ignore-lists — the API deploy fires only for paths that can
+change the compiled API, the web deploy only for `web/**`. An API change never redeploys the
+SPA, a web change never redeploys the API, and a docs change deploys nothing.

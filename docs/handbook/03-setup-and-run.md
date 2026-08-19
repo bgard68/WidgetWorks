@@ -15,30 +15,41 @@ docker compose up --build
 ```
 
 The first build takes a few minutes (it pulls the .NET SDK image, restores NuGet, and
-runs the Vite build). Wait until all three containers are up:
+runs the Vite build). Wait until all four containers are up:
 
 ```powershell
-docker compose ps          # db (healthy), api (running), web (running)
+docker compose ps          # db (healthy), api, web, mailpit (running)
 ```
 
 Then open:
 
 | What | URL |
 |---|---|
-| Store (SPA) | http://localhost:3000 |
+| **Start here** — demo guide / landing page | http://localhost:3000 |
+| Store (SPA) | http://localhost:3000/store |
+| **Mailpit** — every email the app sends | http://localhost:8025 |
 | API + Scalar (interactive API UI) | http://localhost:8080/scalar/v1 |
 | Health | http://localhost:8080/health |
+
+The landing page at `/` explains the demo, states that no payment is ever taken, and lists
+the accounts below with what each role can do — it's the same guide, in the app.
 
 Migrations and demo seed run automatically on API start.
 
 ### Demo accounts
 
-| Role | Email | Password (from `.env`) |
-|---|---|---|
-| Administrator (immutable) | `admin@widgetworks.demo` | `DemoAdmin!Change01` |
-| Customer | `demo@widgetworks.demo` | `DemoUser!Change01` |
+| Role | Email | Password (from `.env`) | What it can do |
+|---|---|---|---|
+| Administrator (immutable) | `admin@widgetworks.demo` | `DemoAdmin!Change01` | Everything — plus retiring a widget and managing users |
+| Manager | `manager@widgetworks.demo` | `DemoManager!Change01` | Catalog (create/edit/restock/hide) and order fulfilment — but **not** delete or user management |
+| Customer | `demo@widgetworks.demo` | `DemoUser!Change01` | Shop, check out, and see their own orders |
 
-The seeded admin has **no 2FA** by default, so it logs straight in with email + password.
+All three are seeded on API start from the `Seed__Demo*` keys in `.env`, so every RBAC
+policy in the app can be exercised from the login screen. The seeded admin has **no 2FA** by
+default, so it logs straight in with email + password.
+
+> These are the **only** credentials that live in the repository — a documented, throwaway
+> exception. See [SECURITY.md](../../SECURITY.md).
 
 ### Stop / restart
 
@@ -60,6 +71,7 @@ dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)"
 dotnet user-secrets set "ConnectionStrings:WidgetWorks" "Host=localhost;Port=5432;Database=widgetworks;Username=widgetworks;Password=<your-local-pw>"
 dotnet user-secrets set "Seed:DemoAdminPassword" "DemoAdmin!Change01"
 dotnet user-secrets set "Seed:DemoCustomerPassword" "DemoUser!Change01"
+dotnet user-secrets set "Seed:DemoManagerPassword" "DemoManager!Change01"
 dotnet run                  # API on http://localhost:5080  (Scalar UI at /scalar/v1)
 
 cd ../../web
@@ -91,3 +103,10 @@ values and why.
   `dotnet run --environment Development`.
 - **Product images blank** — the sample photos come from an external service (picsum);
   it just needs internet. Everything else works offline.
+- **No email in Mailpit** — check `Email__Provider=Smtp`, `Email__Host=mailpit`,
+  `Email__Port=1025`, and **`Email__UseStartTls=false`**. Port 1025 is plain SMTP; leaving
+  STARTTLS on is the usual reason nothing arrives. Full recipe in
+  [Configuration](04-configuration-and-2fa.md#reading-real-mail-locally-mailpit).
+- **API up but every request 503** — the database was unreachable at startup, so migrations
+  were skipped and the app is running degraded on purpose rather than restart-looping.
+  `/health` says so; fix the connection and restart the API.

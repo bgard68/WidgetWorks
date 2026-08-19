@@ -25,7 +25,9 @@ docker compose up --build
 
 | What | URL |
 |---|---|
-| Store (SPA) | http://localhost:3000 |
+| **Start here** — demo guide / landing page | http://localhost:3000 |
+| Store (SPA) | http://localhost:3000/store |
+| **Mailpit** — every email the app sends | http://localhost:8025 |
 | API + Scalar (interactive API UI) | http://localhost:8080/scalar/v1 |
 | Health | http://localhost:8080/health |
 
@@ -35,10 +37,11 @@ with fast iteration (and the exact port/user-secrets details), see
 
 ### Demo accounts (local demo only)
 
-| Role | Email | Password |
-|------|-------|----------|
-| Administrator (immutable) | `admin@widgetworks.demo` | `DemoAdmin!Change01` |
-| Customer | `demo@widgetworks.demo` | `DemoUser!Change01` |
+| Role | Email | Password | What it can do |
+|------|-------|----------|----------------|
+| Administrator (immutable) | `admin@widgetworks.demo` | `DemoAdmin!Change01` | Everything — plus retiring a widget and managing users |
+| Manager | `manager@widgetworks.demo` | `DemoManager!Change01` | Catalog + order fulfilment; **not** delete or user management |
+| Customer | `demo@widgetworks.demo` | `DemoUser!Change01` | Shop, check out, see their own orders |
 
 Passwords are set from `.env` / user-secrets at seed time — the one sanctioned, documented
 "credential" in the repo. The admin has no 2FA by default, so it logs straight in.
@@ -134,11 +137,15 @@ src/
   WidgetWorks.WebApi          Minimal API endpoints, DI, auth wiring
 tests/WidgetWorks.UnitTests   xUnit tests with in-memory fakes + FakeTimeProvider
 web/                          React + TypeScript SPA (Vite)  — see web/README.md
-scripts/                      smoke-test.ps1 and tooling
+infra/                        Provision.ps1 — idempotent Azure provisioning
+scripts/                      smoke-test.ps1, deploy helpers, tooling
+.github/workflows/            CI, path-scoped deploys, the reusable test suite
 docs/                         handbook + architecture ADRs
 Dockerfile.api, Dockerfile.web, docker-compose.yml
 ```
 
 ## License
 
-See [`LICENSE`](LICENSE).
+No `LICENSE` file is published yet, so the default applies: **all rights reserved** — the
+source is public to read, not licensed for reuse. Adding a license (MIT is the usual choice
+for a portfolio project) is a one-file change.

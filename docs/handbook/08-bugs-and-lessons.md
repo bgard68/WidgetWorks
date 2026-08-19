@@ -8,8 +8,10 @@ Two phases shaped the list. Early on the build environment could not install the
 so **code was authored without a local compiler and CI acted as the compiler** — which makes
 the discipline below load-bearing rather than optional. Later, with a local toolchain and a
 real deployment, the failures shifted: shells mangling arguments, a platform restarting a
-crashing container, an identity provider presenting a subject nobody documented. Rows 1–11
-are from the first phase, 12–32 from the second.
+crashing container, an identity provider presenting a subject nobody documented. A third pass
+went after test coverage, and turned up a different class again: global state that only
+misbehaves outside the DI container, and two gates that reported success while doing nothing.
+Rows 1–11 are from the first phase, 12–32 from the second, 33–39 from the third.
 
 ## Bugs
 
@@ -47,6 +49,13 @@ are from the first phase, 12–32 from the second.
 | 30 | Azure OIDC login failed with a valid federated credential | deploy workflow | GitHub presented an **immutable** subject (`repo:owner@id/repo@id:environment:production`), not the documented `repo:owner/repo:environment:name` form | Add federated credentials matching the subject actually presented | Read the subject from the failing token/log rather than from the docs |
 | 31 | A pinned action didn't exist | deploy workflow, immediately | I pinned `Azure/static-web-apps-deploy` to a SHA I had invented | Verify every pin against the GitHub API | A SHA pin is only safe if the SHA is real — resolve it, don't recall it |
 | 32 | Branch protection could never be satisfied | enabling required checks | The rule required a check named `ci.yml`, which no job publishes — and requiring **path-filtered** workflows deadlocks docs-only PRs (they never run, so they never report) | Require only `Secret scan (gitleaks)`, the one check that runs unconditionally | A required check must be one that runs on **every** PR |
+| 33 | A repository read returned `null` for `tracking_number` and `order_number` while `status` and `email` were fine | writing the first integration test | Dapper's snake_case→PascalCase mapping is **global process state**, set inline inside `AddInfrastructure`. Anything constructing a repository outside the DI container never turned it on, so only single-word columns mapped | `DapperConfiguration.Apply()` — explicit, idempotent, called by both the container and the test fixture | Global mutable configuration is a hidden dependency; give it a name and call it, don't bury it in a registration method |
+| 34 | Coverage collapsed to 39% the moment a runsettings file was added, and `OrderRepository` reported 2 tracked lines | the number moved the wrong way after a change that should not have moved it | `CompilerGeneratedAttribute` was in `ExcludeByAttribute`. Every `async` method compiles to a state machine carrying that attribute, so the exclusion silently removed almost the whole codebase from measurement | Drop it; keep only `GeneratedCode`, `Obsolete` and `ExcludeFromCodeCoverage`, with a comment saying why | Treat a coverage jump as suspicious in **both** directions — a number that improves for an unexplained reason is telling you the measurement broke |
+| 35 | The coverage gate passed at a 99% floor on a 95% codebase | testing the gate's failure path, not its success path | `command -v python3` resolves on Windows to an **App Execution Alias** that prints an advert for the Store and exits 0, so the script's body never ran and the gate always "passed" | Execute each candidate interpreter before accepting it | A gate that has never been seen to fail is not known to work; test the red path first |
+| 36 | `dotnet restore` failed the moment a test dependency was added | CI-equivalent restore locally | Testcontainers pulls `SSH.NET 2024.2.0`, which carries a known high-severity advisory, and the repo builds with NuGet audit as an error | Use the PostgreSQL that compose and CI already provide, via a connection-string env var | The audit gate works; when it fires on a *convenience* dependency, take the plainer route rather than weakening the gate |
+| 37 | A challenge-token test failed against a correct implementation | writing tests around `ValidateChallengeTokenAsync` | Issuance uses the injected `TimeProvider` but `TokenValidationParameters` has no such hook, so lifetime is validated against the **system** clock. A token minted at a fixed past date is born expired | Anchor those tests on real time and move the *issuing* clock to express age | "Inject time everywhere" holds only as far as the libraries let it; find the seams that don't take your clock |
+| 38 | An integration test asserted a uniqueness rule the schema does not have | the test failed | `ix_widgets_live_name` is a plain index for ordering the live set, not a unique one. Only SKU is unique (case-folded via `upper(sku)`) | Assert the rule that exists, and add a test documenting that names are deliberately **not** unique | Read the migration, not your memory of it — a test that asserts an imagined constraint fails honestly, but the same assumption in code would not |
+| 39 | New frontend tests passed but `tsc` failed the build | running `npm run build`, not just `npm test` | `.at(-1)` again — the **same ES2022-against-ES2020 trap as row 23** — plus a `let x = null` only assigned inside a Promise executor, which TypeScript narrows to `never` | Index arithmetic, and `let release!: () => void` | Vitest transpiles without type-checking, so a green test run says nothing about the build. Run the gate CI runs |
 
 ## Lessons learned
 
@@ -98,3 +107,16 @@ are from the first phase, 12–32 from the second.
   deadlocks any PR that doesn't touch those paths: it never runs, so it never reports.
 - **Don't trim data a projection depends on.** Skipping the item rows made the query cheaper
   and every order display `0 items`. Read the mapper before optimizing the query.
+- **A measurement that improves for no reason is broken.** Coverage jumping the wrong way
+  after a settings change, and a floor "passing" when set above the actual figure, were both
+  the instrument failing rather than the code improving. Test a gate's red path before
+  trusting its green one.
+- **Global mutable configuration is a hidden dependency.** Dapper's column mapping worked
+  perfectly through the container and silently mis-mapped everything outside it. Naming it
+  and calling it explicitly turned an invisible coupling into a one-line requirement.
+- **A fake that lies is worse than no fake.** A no-op `TouchAsync` let handlers forget to
+  stamp the cart and still pass. Fakes have to model the behaviour they stand in for, or the
+  suite is decorative.
+- **Some invariants only exist in the database.** Atomic stock reservation cannot be
+  demonstrated by any in-memory double; it needs concurrent connections to a real server.
+  Where the rule lives decides what kind of test can prove it.

@@ -44,7 +44,9 @@ describe('AddToCartButton', () => {
   })
 
   it('ignores a second click while the first is still in flight', async () => {
-    let release: (() => void) | null = null
+    // Declared via the resolver rather than a mutable local: TypeScript narrows a variable only
+    // assigned inside the executor to `never`, making it uncallable afterwards.
+    let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
 
     vi.stubGlobal('fetch', vi.fn(async () => {
@@ -61,7 +63,7 @@ describe('AddToCartButton', () => {
     expect(await screen.findByRole('button', { name: 'Adding…' })).toBeDisabled()
     await user.click(button)
 
-    release?.()
+    release()
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1))
   })
 

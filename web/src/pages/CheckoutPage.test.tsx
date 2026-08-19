@@ -85,7 +85,9 @@ describe('CheckoutPage', () => {
     await waitFor(() => expect(screen.getByText('$27.74')).toBeInTheDocument())
     const quotes = calls.filter((c) => c.url.includes('/checkout/quote'))
     expect(quotes.length).toBeGreaterThan(1)
-    expect(JSON.parse(String(quotes.at(-1)?.body ?? quotes.at(-1)?.init?.body))).toMatchObject({ stateCode: 'OR' })
+    // Indexed rather than .at(-1): that is an ES2022 API and the project targets ES2020.
+    const latest = quotes[quotes.length - 1]
+    expect(JSON.parse(String(latest.init?.body))).toMatchObject({ stateCode: 'OR' })
   })
 
   it('re-quotes when the shipping method changes', async () => {

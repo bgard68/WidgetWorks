@@ -133,17 +133,54 @@ az role assignment create --role "Key Vault Secrets Officer" --assignee-object-i
   --assignee-principal-type User --scope $VAULT_ID
 ```
 
-Add the secrets **from files**, so nothing lands in shell history, then shred the files:
+Both secrets are **generated or queried, never pasted** — neither value is ever typed, displayed,
+or left in shell history.
+
+**The JWT signing key** is created and stored in one breath. Nobody, including you, ever sees it:
 
 ```bash
-printf '%s' 'Host=...;SSL Mode=Require' > .secret && \
-  az keyvault secret set --vault-name $KV --name "ConnectionStrings--WidgetWorks" --file .secret
+openssl rand -base64 48 | tr -d '\n' > .secret
+az keyvault secret set --vault-name $KV --name "Jwt--SigningKey" --file .secret
+```
 
-openssl rand -base64 48 > .secret && \
-  az keyvault secret set --vault-name $KV --name "Jwt--SigningKey" --file .secret
+**The connection string** comes from Neon itself. `neon connection-string` emits a URL containing
+the role password, which a small transform reshapes into the key/value form Npgsql expects —
+adding the timeouts that keep a cold Neon wake from failing DbUp at startup:
 
+```bash
+NEON_PROJECT=$(npx --yes neonctl projects list --output json \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+      const p=JSON.parse(s);const l=p.projects||p;
+      process.stdout.write((l.find(x=>x.name==="widgetworks")||l[0]).id)})')
+
+npx --yes neonctl connection-string production \
+  --project-id "$NEON_PROJECT" --database-name neondb --role-name widgetworks_app \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+      const u=new URL(s.trim());
+      process.stdout.write(
+        `Host=${u.hostname};Database=${u.pathname.slice(1)};Username=${decodeURIComponent(u.username)};`+
+        `Password=${decodeURIComponent(u.password)};SSL Mode=Require;Trust Server Certificate=true;`+
+        `Timeout=30;Command Timeout=60`)})' > .secret
+
+az keyvault secret set --vault-name $KV --name "ConnectionStrings--WidgetWorks" --file .secret
+```
+
+```bash
 rm -f .secret
 ```
+
+`rm` the scratch file even if a step fails — it is the only place either value touches the disk.
+Confirm the vault holds both, without printing them:
+
+```bash
+az keyvault secret list --vault-name $KV --query "[].name" -o tsv
+```
+
+The one step that cannot be automated is the first `npx neonctl auth`, which opens a browser to
+link the CLI to your Neon account. After that every call above runs unattended.
+
+Add `Email--Password`, `Payments--Stripe--SecretKey` and `Payments--Stripe--WebhookSecret` the same
+way — only if you move off the Dev and Mock providers.
 
 Key Vault names cannot contain `:` or `_`, so `Jwt__SigningKey` is stored as `Jwt--SigningKey`.
 Add `Email--Password`, `Payments--Stripe--SecretKey` and `Payments--Stripe--WebhookSecret` the same

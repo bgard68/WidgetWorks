@@ -44,6 +44,11 @@ jobs:
         include:
           - language: csharp
             build-mode: none
+          # The SPA handles tokens, renders API-supplied text, and builds request bodies, so it
+          # is as much of a target as the API. build-mode: none uses CodeQL's own extractor and
+          # needs no npm install.
+          - language: javascript-typescript
+            build-mode: none
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

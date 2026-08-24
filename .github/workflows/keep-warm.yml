@@ -1,0 +1,62 @@
+name: Keep API warm
+
+# The SPA is on Static Web Apps (CDN-backed, always warm) but the API is on App
+# Service F1, which unloads the instance after ~20 minutes idle. A cold start costs
+# well over 40 seconds — long enough that a first-time visitor closes the tab before
+# the store ever renders. This ping keeps the instance loaded.
+#
+# It hits /health, which reports the migration result captured at startup and does
+# NOT query the database (see Program.cs). That matters for cost: Neon's free plan
+# allows 100 CU-hrs/month and its floor is 0.25 CU, so holding the database awake
+# around the clock would cost ~180 CU-hrs — nearly double the budget. Warming the
+# app while letting Neon sleep keeps the slow half warm and the metered half idle;
+# Neon itself wakes in a second or two on the first real query.
+#
+# Notes:
+#   - Reads the repo Variable VITE_API_BASE_URL (Settings > Secrets and variables >
+#     Actions > Variables), the same value the SPA build uses.
+#   - GitHub delays or drops scheduled runs under load, so treat the interval as
+#     "roughly". Missing one ping costs a cold start, not correctness.
+#   - Actions minutes are unlimited on public repos; on a private repo this bills
+#     against the monthly allowance — widen the interval there.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # roughly every 15 minutes, inside the ~20 min idle unload
+  workflow_dispatch:          # manual "wake it now"
+
+concurrency:
+  group: keep-warm
+  cancel-in-progress: true
+
+permissions: {}              # no repo access needed — this only makes an HTTP call
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /health (warms the app, no database query)
+        env:
+          API_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "VITE_API_BASE_URL is not set — nothing to ping. Skipping."
+            exit 0
+          fi
+          url="${API_URL%/}/health"
+          echo "Pinging $url"
+          # --retry-all-errors so a cold start that times out once still gets a second
+          # chance in the same run; the instance is usually up by the retry.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 --retry 3 --retry-all-errors "$url" || echo "000")
+          echo "HTTP $code"
+          # 200 is the goal. A 503 still means the app woke and answered — it reports an
+          # unhealthy database, which the deploy health gate already covers, so it is not
+          # this workflow's job to fail on it. 000 means the ping never landed; log it
+          # without failing, since a red schedule every 15 minutes is just alert noise.
+          case "$code" in
+            200) echo "Warm." ;;
+            503) echo "::warning::App is awake but reports unhealthy (database). See deploy health gate." ;;
+            000) echo "::warning::No response within the timeout; the next ping will try again." ;;
+            *)   echo "::warning::Unexpected status $code." ;;
+          esac

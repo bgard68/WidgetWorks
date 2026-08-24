@@ -12,6 +12,21 @@ clean, testable, time-abstracted code.
 
 ---
 
+## Live demo
+
+| What | URL |
+|---|---|
+| **Store (SPA)** | https://black-wave-0aaf4010f.7.azurestaticapps.net |
+| API health | https://widgetworks-api-41d09d.azurewebsites.net/health |
+
+Sign in with any of the [demo accounts](#demo-accounts) below — all three are seeded live.
+
+The API runs on App Service F1 and the database on Neon's free plan, both of which sleep
+when idle. A scheduled ping keeps the app loaded, but if it has been quiet the first
+request may still take a few seconds while Neon wakes. Subsequent requests are immediate.
+
+---
+
 ## Quick start (Docker — one command)
 
 You don't need .NET or Node installed; Docker builds both.
@@ -35,7 +50,9 @@ Migrations and demo seed run automatically on API start. For running the API on 
 with fast iteration (and the exact port/user-secrets details), see
 **[Setup & run](docs/handbook/03-setup-and-run.md)**.
 
-### Demo accounts (local demo only)
+### Demo accounts
+
+Seeded in **both** the live demo and a local run.
 
 | Role | Email | Password | What it can do |
 |------|-------|----------|----------------|
@@ -43,8 +60,12 @@ with fast iteration (and the exact port/user-secrets details), see
 | Manager | `manager@widgetworks.demo` | `DemoManager!Change01` | Catalog + order fulfilment; **not** delete or user management |
 | Customer | `demo@widgetworks.demo` | `DemoUser!Change01` | Shop, check out, see their own orders |
 
-Passwords are set from `.env` / user-secrets at seed time — the one sanctioned, documented
-"credential" in the repo. The admin has no 2FA by default, so it logs straight in.
+Passwords are set from `.env` / user-secrets locally and from App Service settings in the
+live demo — the one sanctioned, documented "credential" in the repo. The admin has no 2FA
+by default, so it logs straight in.
+
+These are throwaway accounts on a disposable database, published deliberately so a reviewer
+can exercise every role without signing up.
 
 ---
 

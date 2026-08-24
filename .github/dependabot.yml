@@ -28,6 +28,14 @@ updates:
       dotnet-security:
         applies-to: security-updates
         patterns: ["*"]
+    ignore:
+      # Microsoft.AspNetCore.OpenApi 10.x requires Microsoft.OpenApi >=2.7.5 <3.0.0.
+      # A 3.x bump resolves outside that constraint, raising NU1608 -> build error
+      # (TreatWarningsAsErrors). We still take 2.x patches, which is what the
+      # explicit pin in WidgetWorks.WebApi.csproj exists for (GHSA-v5pm-xwqc-g5wc).
+      # Revisit when ASP.NET Core itself depends on Microsoft.OpenApi 3.x.
+      - dependency-name: "Microsoft.OpenApi"
+        update-types: ["version-update:semver-major"]
 
   # ---- React / npm (SPA) ----
   - package-ecosystem: "npm"
@@ -66,6 +74,17 @@ updates:
       prefix: "ci(deps)"
       include: "scope"
     groups:
+      # Groups are matched in order; these must come before the catch-all.
+      # Both families are version-locked across call sites, so a split PR
+      # lands a mismatch that only fails at run time:
+      #   codeql-action/init + /analyze must share one version, else
+      #     "Loaded a configuration file for version X, but running version Y".
+      #   upload-artifact + download-artifact must stay on the same major,
+      #     or the upload/download handoff in test-suite.yml breaks.
+      codeql-action:
+        patterns: ["github/codeql-action*"]
+      artifact-actions:
+        patterns: ["actions/upload-artifact", "actions/download-artifact"]
       actions-all:
         patterns: ["*"]
 

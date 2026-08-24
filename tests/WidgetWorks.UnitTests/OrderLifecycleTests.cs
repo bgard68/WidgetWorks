@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Time.Testing;
+using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Orders.UpdateStatus;
 using WidgetWorks.Domain.Orders;
 using WidgetWorks.UnitTests.Fakes;
@@ -67,5 +68,38 @@ public class OrderLifecycleTests
 
         Assert.True(result.IsSuccess);
         Assert.Contains(email.Sent, m => m.Subject.Contains("cancelled"));
+    }
+
+    [Fact]
+    public async Task An_unknown_order_cannot_change_status()
+    {
+        var (orders, email, _) = Setup();
+        var handler = new UpdateOrderStatusHandler(orders, email, Clock());
+
+        var result = await handler.Handle(new UpdateOrderStatusCommand(Guid.NewGuid(), OrderStatus.Shipped, null), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Order not found.", result.Error);
+        Assert.Empty(email.Sent);
+    }
+
+    [Fact]
+    public async Task A_failed_shipping_email_does_not_undo_the_transition()
+    {
+        var (orders, _, order) = Setup();
+        var handler = new UpdateOrderStatusHandler(orders, new ThrowingEmailSender(), Clock());
+
+        var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Shipped, "1Z999"), CancellationToken.None);
+
+        // The parcel left the warehouse whether or not the mail server was up.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OrderStatus.Shipped, orders.Orders.Single().Status);
+        Assert.Equal("1Z999", orders.Orders.Single().TrackingNumber);
+    }
+
+    private sealed class ThrowingEmailSender : IEmailSender
+    {
+        public Task SendAsync(EmailMessage message, CancellationToken ct)
+            => throw new InvalidOperationException("smtp is down");
     }
 }

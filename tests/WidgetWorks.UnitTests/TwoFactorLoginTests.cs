@@ -78,4 +78,37 @@ public class TwoFactorLoginTests
         var bad = await handler.Handle(new TwoFactorLoginCommand(challenge, "000000"), CancellationToken.None);
         Assert.True(bad.IsFailure);
     }
+
+    [Fact]
+    public async Task An_unparseable_challenge_is_refused()
+    {
+        var handler = new TwoFactorLoginHandler(
+            new InMemoryUserRepository(), new InMemoryRefreshTokenRepository(), new InMemoryTwoFactorRepository(),
+            new FakeTotpService(), new StubTokenService(), new RecordingAuditLog(), new FakeTimeProvider(Start));
+
+        var result = await handler.Handle(new TwoFactorLoginCommand("garbage", "654321"), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Invalid or expired challenge.", result.Error);
+    }
+
+    [Fact]
+    public async Task A_challenge_for_a_missing_or_non_2fa_user_is_refused()
+    {
+        var users = new InMemoryUserRepository();
+        var stubTokens = new StubTokenService();
+        var plain = new User { Id = Guid.NewGuid(), Email = "a@b.com", NormalizedEmail = "A@B.COM", SecurityStamp = Guid.NewGuid(), TwoFactorEnabled = false };
+        users.Store[plain.Id] = plain;
+        var handler = new TwoFactorLoginHandler(
+            users, new InMemoryRefreshTokenRepository(), new InMemoryTwoFactorRepository(),
+            new FakeTotpService(), stubTokens, new RecordingAuditLog(), new FakeTimeProvider(Start));
+
+        var gone = await handler.Handle(
+            new TwoFactorLoginCommand(stubTokens.CreateChallengeToken(new User { Id = Guid.NewGuid() }), "654321"), CancellationToken.None);
+        var non2fa = await handler.Handle(
+            new TwoFactorLoginCommand(stubTokens.CreateChallengeToken(plain), "654321"), CancellationToken.None);
+
+        Assert.Equal("Invalid challenge.", gone.Error);
+        Assert.Equal("Invalid challenge.", non2fa.Error);
+    }
 }

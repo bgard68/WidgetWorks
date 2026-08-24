@@ -28,6 +28,9 @@ public class JwtKeyRingTests
         Assert.Single(ring.ResolveKeys("wk-1"));   // previous key still trusted
         Assert.Single(ring.ResolveKeys("wk-2"));
         Assert.Empty(ring.ResolveKeys("unknown"));
+
+        // A token with no kid header can only be checked against every trusted key.
+        Assert.Equal(2, ring.ResolveKeys(null).Count());
     }
 
     [Fact]

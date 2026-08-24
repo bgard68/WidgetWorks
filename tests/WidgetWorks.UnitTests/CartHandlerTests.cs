@@ -98,4 +98,90 @@ public class CartHandlerTests
         Assert.Equal(3, result.Value!.Items[0].Quantity);
         Assert.Null(await carts.GetAsync(guest.Value!.Id, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Add_requires_a_positive_quantity()
+    {
+        var (carts, widgets, widget) = Setup();
+        var handler = new AddCartItemHandler(carts, widgets, Clock());
+
+        var result = await handler.Handle(new AddCartItemCommand(null, null, widget.Id, 0), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Quantity must be at least 1.", result.Error);
+        Assert.Empty(carts.Store);   // no cart was created for a refused add
+    }
+
+    [Fact]
+    public async Task Add_of_an_unknown_or_hidden_widget_is_refused()
+    {
+        var (carts, widgets, widget) = Setup();
+        widget.IsActive = false;
+        var handler = new AddCartItemHandler(carts, widgets, Clock());
+
+        var unknown = await handler.Handle(new AddCartItemCommand(null, null, Guid.NewGuid(), 1), CancellationToken.None);
+        var hidden = await handler.Handle(new AddCartItemCommand(null, null, widget.Id, 1), CancellationToken.None);
+
+        Assert.Equal("Widget not found.", unknown.Error);
+        Assert.Equal("Widget not found.", hidden.Error);
+    }
+
+    [Fact]
+    public async Task Add_of_a_sold_out_widget_is_refused()
+    {
+        var (carts, widgets, widget) = Setup(available: 5);
+        widget.QuantityReserved = 5;   // everything on hand belongs to someone else's order
+        var handler = new AddCartItemHandler(carts, widgets, Clock());
+
+        var result = await handler.Handle(new AddCartItemCommand(null, null, widget.Id, 1), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("This widget is out of stock.", result.Error);
+    }
+
+    [Fact]
+    public async Task Add_without_a_cart_id_finds_the_users_existing_cart()
+    {
+        var (carts, widgets, widget) = Setup();
+        var handler = new AddCartItemHandler(carts, widgets, Clock());
+        var userId = Guid.NewGuid();
+
+        var first = await handler.Handle(new AddCartItemCommand(null, userId, widget.Id, 1), CancellationToken.None);
+        // Same user, no cart id (e.g. a second browser tab): the add must land in the same cart.
+        var second = await handler.Handle(new AddCartItemCommand(null, userId, widget.Id, 2), CancellationToken.None);
+
+        Assert.Equal(first.Value!.Id, second.Value!.Id);
+        Assert.Equal(userId, second.Value!.UserId);
+        Assert.Equal(3, second.Value!.Items.Single().Quantity);
+        // The line reports how much more a shopper could still take.
+        Assert.Equal(10, second.Value!.Items.Single().QuantityAvailable);
+    }
+
+    [Fact]
+    public async Task Merge_of_an_unknown_guest_cart_fails()
+    {
+        var (carts, widgets, _) = Setup();
+        var merge = new MergeCartHandler(carts, widgets, Clock());
+
+        var result = await merge.Handle(new MergeCartCommand(Guid.NewGuid(), Guid.NewGuid()), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Guest cart not found.", result.Error);
+    }
+
+    [Fact]
+    public async Task Merge_never_absorbs_another_users_cart()
+    {
+        var (carts, widgets, widget) = Setup();
+        var add = new AddCartItemHandler(carts, widgets, Clock());
+        var victim = Guid.NewGuid();
+        var victimCart = await add.Handle(new AddCartItemCommand(null, victim, widget.Id, 2), CancellationToken.None);
+
+        var merge = new MergeCartHandler(carts, widgets, Clock());
+        var result = await merge.Handle(new MergeCartCommand(Guid.NewGuid(), victimCart.Value!.Id), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Cart not found.", result.Error);
+        Assert.NotNull(await carts.GetAsync(victimCart.Value!.Id, CancellationToken.None));   // untouched
+    }
 }

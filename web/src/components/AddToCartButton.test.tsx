@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AddToCartButton } from './AddToCartButton'
-import { renderWithProviders, stubFetch } from '../test/render'
+import { renderWithProviders, stubFetch, stubFetchRejecting } from '../test/render'
 
 /**
  * The control every product surface shares. Its whole reason to exist is feedback while the
@@ -127,5 +127,51 @@ describe('AddToCartButton', () => {
 
     await screen.findByText('nope')
     expect(onAdded).not.toHaveBeenCalled()
+  })
+
+  it('still says something useful when the failure is not an Error', async () => {
+    stubFetchRejecting()
+    const user = userEvent.setup()
+
+    renderWithProviders(<AddToCartButton widgetId="w-1" />)
+    await user.click(screen.getByRole('button', { name: 'Add to cart' }))
+
+    expect(await screen.findByText('Could not add to cart.')).toBeInTheDocument()
+  })
+
+  it('returns to "Add to cart" a moment after a successful add', async () => {
+    stubFetch([['/cart', () => cart]])
+    // Driven with fireEvent and explicit act: user-event and waitFor both need the
+    // real clock, and this test is about what the faked one does.
+    vi.useFakeTimers()
+    try {
+      renderWithProviders(<AddToCartButton widgetId="w-1" />)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add to cart' })) })
+      expect(screen.getByRole('button', { name: '✓ Added to cart' })).toBeInTheDocument()
+
+      // The tick is the point: the confirmation is temporary, so the control goes
+      // back to being usable instead of reading "Added" forever.
+      act(() => { vi.advanceTimersByTime(1800) })
+
+      expect(screen.getByRole('button', { name: 'Add to cart' })).toBeEnabled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('clears its reset timer when it unmounts mid-countdown', async () => {
+    stubFetch([['/cart', () => cart]])
+    const clearTimeout = vi.spyOn(globalThis, 'clearTimeout')
+    const user = userEvent.setup()
+
+    const { unmount } = renderWithProviders(<AddToCartButton widgetId="w-1" />)
+    await user.click(screen.getByRole('button', { name: 'Add to cart' }))
+    await screen.findByRole('button', { name: '✓ Added to cart' })
+
+    // Navigating away during the 1.8s "Added" window must not leave a timer to fire
+    // against an unmounted component.
+    unmount()
+
+    expect(clearTimeout).toHaveBeenCalled()
   })
 })

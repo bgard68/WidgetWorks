@@ -42,4 +42,11 @@ public class ProtectedAdminGuardTests
         var admin = ProtectedAdmin();
         ProtectedAdminGuard.EnsureCanChangeIdentity(admin, admin.Email.ToUpperInvariant(), UserRoles.Administrator);
     }
+
+    [Fact]
+    public void Ordinary_users_may_change_identity_freely()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "jane@example.com", Role = UserRoles.Customer, IsProtectedAdmin = false };
+        ProtectedAdminGuard.EnsureCanChangeIdentity(user, "new@example.com", UserRoles.Manager); // does not throw
+    }
 }

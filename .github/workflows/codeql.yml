@@ -31,12 +31,15 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Code scanning needs GitHub Advanced Security on private repos; run only when public.
     # Re-enables automatically if the repository is made public.
     if: github.event.repository.visibility == 'public'
     permissions:
       actions: read
       contents: read
+      # The one write this job cannot lose: codeql-action/analyze uploads its SARIF results
+      # to code scanning with it. Scoped to this job only; everything else stays read-only.
       security-events: write
     strategy:
       fail-fast: false
@@ -52,6 +55,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No later step pushes with the job token; keep it out of .git/config.
+          persist-credentials: false
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4

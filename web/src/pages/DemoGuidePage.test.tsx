@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DemoGuidePage } from './DemoGuidePage'
 import { renderWithProviders } from '../test/render'
@@ -53,6 +53,27 @@ describe('DemoGuidePage', () => {
 
     expect(await navigator.clipboard.readText()).toBe('demo@widgetworks.demo')
     await waitFor(() => expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument())
+  })
+
+  it('drops the copied confirmation again shortly afterwards', async () => {
+    // fireEvent and explicit act: user-event and waitFor both need the real clock,
+    // and this test is about what the faked one does.
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn(async () => {}) } })
+    vi.useFakeTimers()
+    try {
+      render()
+      await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0]) })
+      expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument()
+
+      // Otherwise every field a visitor touched stays stuck on "Copied", and the
+      // buttons stop telling them what they still do.
+      act(() => { vi.advanceTimersByTime(1600) })
+
+      expect(screen.queryByRole('button', { name: '✓ Copied' })).not.toBeInTheDocument()
+      expect(screen.getAllByRole('button', { name: 'Copy' }).length).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('survives a browser that refuses clipboard access', async () => {

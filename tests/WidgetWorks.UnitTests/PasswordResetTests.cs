@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application;
 using WidgetWorks.Application.Auth.PasswordReset;
+using WidgetWorks.Domain.Auth;
 using WidgetWorks.Domain.Users;
 using WidgetWorks.UnitTests.Fakes;
 using Xunit;
@@ -114,5 +115,82 @@ public class PasswordResetTests
         Assert.True(result.IsSuccess);
         Assert.Empty(c.Tokens.Tokens);
         Assert.Empty(c.Email.Sent);
+    }
+
+    [Fact]
+    public async Task Request_still_succeeds_when_the_reset_email_fails()
+    {
+        var c = Setup();
+        var handler = new RequestPasswordResetHandler(c.Users, c.Tokens, c.Gen, new ThrowingEmailSender(), new WidgetWorks.Application.AppOptions(), c.Clock);
+
+        var result = await handler.Handle(new RequestPasswordResetCommand("jane@example.com"), CancellationToken.None);
+
+        // Still a silent 200: a mail outage must not become an account-enumeration oracle.
+        Assert.True(result.IsSuccess);
+        Assert.Single(c.Tokens.Tokens);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("short")]
+    public async Task Reset_requires_eight_characters_of_password(string password)
+    {
+        var c = Setup();
+
+        var result = await Reset(c).Handle(new ResetPasswordCommand("whatever", password), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Password must be at least 8 characters.", result.Error);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Reset_requires_a_token(string token)
+    {
+        var c = Setup();
+
+        var result = await Reset(c).Handle(new ResetPasswordCommand(token, "long-enough-pw"), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Invalid or expired reset link.", result.Error);
+    }
+
+    [Fact]
+    public async Task Reset_refuses_a_token_whose_user_is_gone_or_protected()
+    {
+        // Defense in depth: request never issues these tokens, so plant them directly.
+        var c = Setup(protectedAdmin: true);
+        var now = c.Clock.GetUtcNow();
+        c.Tokens.Tokens.Add(new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = c.User.Id,   // protected admin
+            TokenHash = c.Gen.Hash("planted-admin"),
+            ExpiresAt = now.AddMinutes(30),
+            CreatedAt = now,
+        });
+        c.Tokens.Tokens.Add(new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),   // no such user
+            TokenHash = c.Gen.Hash("planted-orphan"),
+            ExpiresAt = now.AddMinutes(30),
+            CreatedAt = now,
+        });
+
+        var admin = await Reset(c).Handle(new ResetPasswordCommand("planted-admin", "long-enough-pw"), CancellationToken.None);
+        var orphan = await Reset(c).Handle(new ResetPasswordCommand("planted-orphan", "long-enough-pw"), CancellationToken.None);
+
+        Assert.Equal("Invalid or expired reset link.", admin.Error);
+        Assert.Equal("Invalid or expired reset link.", orphan.Error);
+        Assert.Equal(c.Hasher.Hash("old-password"), c.Users.Store[c.User.Id].PasswordHash);   // unchanged
+    }
+
+    private sealed class ThrowingEmailSender : WidgetWorks.Application.Abstractions.IEmailSender
+    {
+        public Task SendAsync(WidgetWorks.Application.Abstractions.EmailMessage message, CancellationToken ct)
+            => throw new InvalidOperationException("smtp is down");
     }
 }

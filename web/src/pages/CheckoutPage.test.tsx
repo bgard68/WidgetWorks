@@ -191,6 +191,63 @@ describe('CheckoutPage', () => {
     expect(screen.queryByRole('heading', { name: 'Thank you' })).not.toBeInTheDocument()
   })
 
+  it('reports a quote failure instead of showing a stale or invented total', async () => {
+    useCartId('cart-1')
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/checkout/quote')) {
+        return new Response(JSON.stringify({ error: 'Cart not found.' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return new Response(JSON.stringify(cart), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    renderWithProviders(<CheckoutPage />, { at: '/checkout' })
+
+    expect(await screen.findByText('Cart not found.')).toBeInTheDocument()
+    // The summary stays in its "calculating" state rather than inventing figures.
+    expect(screen.queryByText('Order total')).not.toBeInTheDocument()
+  })
+
+  it('falls back to its own message when checkout fails with a non-Error', async () => {
+    useCartId('cart-1')
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/checkout/quote')) {
+        return new Response(JSON.stringify(quoteFor('CA', 'Standard')), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/checkout')) throw 'network exploded'
+      return new Response(JSON.stringify(cart), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+
+    renderWithProviders(<CheckoutPage />, { at: '/checkout' })
+    await screen.findByText('$29.19')
+
+    await fillAddress(user)
+    await user.click(placeOrderButton())
+
+    expect(await screen.findByText('Checkout failed.')).toBeInTheDocument()
+  })
+
+  it('shows free shipping as FREE rather than $0.00', async () => {
+    useCartId('cart-1')
+    stubFetch([
+      ['/checkout/quote', () => ({
+        subtotal: 90, shippingMethod: 'Standard', shipping: 0, stateCode: 'CA',
+        taxRate: 0.0725, tax: 6.53, total: 96.53, itemCount: 2, isEmpty: false,
+      })],
+      ['/cart/cart-1', () => cart],
+    ])
+
+    renderWithProviders(<CheckoutPage />, { at: '/checkout' })
+
+    expect(await screen.findByText('FREE')).toBeInTheDocument()
+    expect(screen.getByText('$96.53')).toBeInTheDocument()
+  })
+
   it('offers nothing to check out when the cart is empty', async () => {
     stubFetch([['/cart/', () => ({ ...cart, items: [], itemCount: 0, subtotal: 0 })]])
 

@@ -90,6 +90,78 @@ describe('CartPage', () => {
     expect(await screen.findByText('Your cart is empty')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Start shopping' })).toHaveAttribute('href', '/store')
   })
+
+  it('shows why an update failed instead of silently ignoring it', async () => {
+    useCartId('cart-1')
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return new Response(JSON.stringify({ error: 'This widget is out of stock.' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return new Response(JSON.stringify(cart), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+
+    renderWithProviders(<CartPage />, { at: '/cart' })
+    await user.click(await screen.findByRole('button', { name: 'Increase quantity of Standard Widget' }))
+
+    expect(await screen.findByText('This widget is out of stock.')).toBeInTheDocument()
+  })
+
+  it('will not push a line past what is in stock', async () => {
+    useCartId('cart-1')
+    // Two in the basket, two available: there is nothing left to add.
+    stubFetch([['/cart/cart-1', () => ({ ...cart, items: [{ ...line, quantityAvailable: 2 }] })]])
+
+    renderWithProviders(<CartPage />, { at: '/cart' })
+
+    expect(await screen.findByRole('button', { name: 'Increase quantity of Standard Widget' })).toBeDisabled()
+  })
+
+  it('says how much more would earn free shipping, then that it is earned', async () => {
+    useCartId('cart-1')
+    stubFetch([['/cart/cart-1', () => cart]])   // $20 subtotal, under the $75 threshold
+    const { unmount } = renderWithProviders(<CartPage />, { at: '/cart' })
+
+    expect(await screen.findByText(/more to qualify for free standard shipping/)).toBeInTheDocument()
+    expect(screen.getByText('$55.00')).toBeInTheDocument()
+    unmount()
+
+    localStorage.clear()
+    useCartId('cart-1')
+    stubFetch([['/cart/cart-1', () => ({ ...cart, subtotal: 90, items: [{ ...line, quantity: 9, lineSubtotal: 90 }], itemCount: 9 })]])
+    renderWithProviders(<CartPage />, { at: '/cart' })
+
+    expect(await screen.findByText(/qualifies for/)).toBeInTheDocument()
+  })
+
+  it('falls back to its own message when the failure is not an Error', async () => {
+    useCartId('cart-1')
+    const first = { ...cart }
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') throw 'network exploded'
+      calls++
+      return new Response(JSON.stringify(first), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+
+    renderWithProviders(<CartPage />, { at: '/cart' })
+    await user.click(await screen.findByRole('button', { name: 'Increase quantity of Standard Widget' }))
+
+    expect(await screen.findByText('Could not update the cart.')).toBeInTheDocument()
+    expect(calls).toBeGreaterThan(0)
+  })
+
+  it('counts a single item in the singular', async () => {
+    useCartId('cart-1')
+    stubFetch([['/cart/cart-1', () => ({ ...cart, itemCount: 1, subtotal: 10, items: [{ ...line, quantity: 1, lineSubtotal: 10 }] })]])
+
+    renderWithProviders(<CartPage />, { at: '/cart' })
+
+    expect(await screen.findByText('1 item')).toBeInTheDocument()
+  })
 })
 
 describe('OrdersPage', () => {
@@ -280,5 +352,115 @@ describe('AdminOrderPage', () => {
     const aside = await screen.findByText('No order selected')
     expect(within(aside.closest('.panel') as HTMLElement).getByText(/Pick an order/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Mark shipped' })).not.toBeInTheDocument()
+  })
+
+  it('reports an order it cannot open', async () => {
+    signIn('Manager')
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/admin/orders/o-1')) {
+        return new Response(JSON.stringify({ error: 'Order not found.' }), {
+          status: 404, headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return new Response(JSON.stringify([summary]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+
+    expect(await screen.findByText('Order not found.')).toBeInTheDocument()
+    expect(screen.getByText('No order selected')).toBeInTheDocument()
+  })
+
+  it('shows a tracking number the order already carries', async () => {
+    signIn('Manager')
+    stubFetch([
+      ['/admin/orders/o-1', () => ({ ...detail, status: 'Shipped', trackingNumber: '1Z-EXISTING' })],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+
+    // Pre-filled, so re-saving a status does not wipe the number already sent to the customer.
+    expect(await screen.findByLabelText('Tracking number')).toHaveValue('1Z-EXISTING')
+  })
+
+  it('counts a single order in the singular', async () => {
+    signIn('Manager')
+    stubFetch([['/admin/orders', () => [summary]]])
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+
+    expect(await screen.findByText(/1 most recent order\./)).toBeInTheDocument()
+  })
+
+  it('reports a list failure rather than loading forever', async () => {
+    signIn('Manager')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: 'Orders unavailable.' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    )))
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+
+    expect(await screen.findByText('Orders unavailable.')).toBeInTheDocument()
+  })
+
+  it('marks an order delivered', async () => {
+    signIn('Manager')
+    const calls = stubFetch([
+      ['/admin/orders/o-1/status', () => ({ ...detail, status: 'Delivered' })],
+      ['/admin/orders/o-1', () => ({ ...detail, status: 'Shipped', trackingNumber: '1Z-EXISTING' })],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+    await user.click(await screen.findByRole('button', { name: 'Delivered' }))
+
+    await waitFor(() => {
+      const post = calls.find((c) => c.url.includes('/status'))
+      expect(JSON.parse(String(post?.init?.body))).toEqual({ status: 'Delivered', trackingNumber: '1Z-EXISTING' })
+    })
+  })
+
+  it('falls back to its own messages when failures are not Errors', async () => {
+    signIn('Manager')
+    let listed = false
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/admin/orders/o-1')) throw 'network exploded'
+      listed = true
+      return new Response(JSON.stringify([summary]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+
+    expect(await screen.findByText('Could not load that order.')).toBeInTheDocument()
+    expect(listed).toBe(true)
+  })
+
+  it('falls back to its own message when a status update is not an Error', async () => {
+    signIn('Manager')
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/status')) throw 'network exploded'
+      if (url.includes('/admin/orders/o-1')) {
+        return new Response(JSON.stringify(detail), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify([summary]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+    await user.click(await screen.findByRole('button', { name: 'Mark shipped' }))
+
+    expect(await screen.findByText('Update failed.')).toBeInTheDocument()
   })
 })

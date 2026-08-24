@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { ForgotPasswordPage } from './ForgotPasswordPage'
 import { ResetPasswordPage } from './ResetPasswordPage'
 import { OrderDetailPage } from './OrderDetailPage'
-import { renderWithProviders, signIn, stubFetch } from '../test/render'
+import { renderWithProviders, signIn, stubFetch, stubFetchRejecting } from '../test/render'
 
 describe('ForgotPasswordPage', () => {
   it('sends the address and confirms without revealing whether it exists', async () => {
@@ -71,6 +71,17 @@ describe('ResetPasswordPage', () => {
 
     expect(await screen.findByText(/That reset link has expired/)).toBeInTheDocument()
   })
+
+  it('falls back to its own message when the failure is not an Error', async () => {
+    stubFetchRejecting()
+    const user = userEvent.setup()
+
+    renderWithProviders(<ResetPasswordPage />, { at: '/reset-password?token=tok-123', path: '/reset-password' })
+    await user.type(screen.getByLabelText(/New password/), 'a-brand-new-password')
+    await user.click(screen.getByRole('button', { name: /Reset|Save|Change/i }))
+
+    expect(await screen.findByText('Reset failed.')).toBeInTheDocument()
+  })
 })
 
 describe('OrderDetailPage', () => {
@@ -132,5 +143,54 @@ describe('OrderDetailPage', () => {
     await user.click(await screen.findByRole('button', { name: /Print/i }))
 
     expect(print).toHaveBeenCalled()
+  })
+
+  it('shows free shipping as FREE and omits payment detail an order has none of', async () => {
+    signIn('Customer')
+    stubFetch([['/orders/o-2', () => ({
+      ...order,
+      id: 'o-2',
+      shipping: 0,
+      taxState: '',
+      trackingNumber: null,
+      paymentProvider: null,
+      paymentReference: null,
+    })]])
+
+    renderWithProviders(<OrderDetailPage />, { at: '/orders/o-2', path: '/orders/:id' })
+
+    expect(await screen.findByText('FREE')).toBeInTheDocument()
+    expect(screen.queryByText(/Paid with/)).not.toBeInTheDocument()
+    expect(screen.queryByText('1Z999AA10123456784')).not.toBeInTheDocument()
+  })
+
+  it('names the payment provider without a reference when there is none', async () => {
+    signIn('Customer')
+    stubFetch([['/orders/o-3', () => ({ ...order, id: 'o-3', paymentReference: null })]])
+
+    renderWithProviders(<OrderDetailPage />, { at: '/orders/o-3', path: '/orders/:id' })
+
+    const note = await screen.findByText(/Paid with Mock/)
+    expect(note).toBeInTheDocument()
+    expect(note).not.toHaveTextContent('ref')
+  })
+
+  it('shows a skeleton while the order is loading', () => {
+    signIn('Customer')
+    stubFetch([['/orders/o-1', () => order]])
+
+    renderWithProviders(<OrderDetailPage />, { at: '/orders/o-1', path: '/orders/:id' })
+
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+  })
+
+  it('asks for nothing when the URL carries no order id', () => {
+    signIn('Customer')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWithProviders(<OrderDetailPage />, { at: '/orders', path: '/orders' })
+
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

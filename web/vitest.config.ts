@@ -25,11 +25,18 @@ export default defineConfig({
       ],
       // A floor, not a target: it catches a regression rather than inviting tests written to
       // hit a number. `npm run test:coverage` fails the run when coverage drops below it.
+      //
+      // Lines and functions are fully covered, so their floor is the full figure — anything
+      // newly unreachable by the suite is a deliberate decision, not an oversight. Branches
+      // and statements sit just under: the shortfall is a handful of defensive guards that
+      // cannot be reached through the UI (a click on a button that is disabled while busy, a
+      // dialog handler with no subject, a ref that is always attached). Reaching them would
+      // mean reshaping the source around the measurement.
       thresholds: {
-        statements: 80,
-        branches: 70,
-        functions: 80,
-        lines: 82,
+        statements: 98,
+        branches: 98,
+        functions: 100,
+        lines: 100,
       },
     },
   },

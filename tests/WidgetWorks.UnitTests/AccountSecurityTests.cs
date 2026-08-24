@@ -83,4 +83,16 @@ public class AccountSecurityTests
         Assert.NotEqual(originalStamp, users.Store[user.Id].SecurityStamp);   // stamp rotated -> access tokens invalid
         Assert.All(refresh.Tokens, t => Assert.NotNull(t.RevokedAt));          // every refresh token revoked
     }
+
+    [Fact]
+    public async Task SecureAccount_for_an_unknown_user_fails()
+    {
+        var handler = new SecureAccountHandler(
+            new InMemoryUserRepository(), new InMemoryRefreshTokenRepository(), new RecordingAuditLog(), new FakeTimeProvider(Start));
+
+        var result = await handler.Handle(new SecureAccountCommand(Guid.NewGuid()), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("User not found.", result.Error);
+    }
 }

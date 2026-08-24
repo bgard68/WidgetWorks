@@ -109,6 +109,9 @@ public class SmallServicesTests
 
         Assert.Equal(widget.Id, view.Id);
         Assert.Equal("WW-001", view.Sku);
+        Assert.Equal("Standard Widget", view.Name);
+        Assert.Equal("Dependable.", view.Description);
+        Assert.Null(view.ImageUrl);
         Assert.Equal(9.99m, view.Price);
         Assert.True(view.IsActive);
         Assert.Equal(10, view.QuantityOnHand);
@@ -239,5 +242,18 @@ public class SmallServicesTests
         await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 3), CancellationToken.None);
 
         Assert.Equal(Now, c.Carts.Store[c.Cart.Id].UpdatedAt);
+    }
+
+    // ---- dapper mapping ------------------------------------------------------------------
+
+    [Fact]
+    public void Dapper_configuration_applies_exactly_once()
+    {
+        // Called from AddInfrastructure and from every test fixture; the second call must be a
+        // no-op rather than re-registering mappings.
+        WidgetWorks.Infrastructure.Persistence.DapperConfiguration.Apply();
+        WidgetWorks.Infrastructure.Persistence.DapperConfiguration.Apply();
+
+        Assert.True(Dapper.DefaultTypeMap.MatchNamesWithUnderscores);
     }
 }

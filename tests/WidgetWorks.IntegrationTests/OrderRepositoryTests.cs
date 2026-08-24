@@ -1,3 +1,4 @@
+using Dapper;
 using WidgetWorks.Domain.Catalog;
 using WidgetWorks.Domain.Orders;
 using WidgetWorks.Domain.Users;
@@ -304,5 +305,71 @@ public class OrderRepositoryTests(PostgresFixture db)
     public async Task An_unknown_order_id_returns_null_rather_than_throwing()
     {
         Assert.Null(await Orders.GetByIdAsync(Guid.NewGuid(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_mid_transaction_failure_rolls_the_whole_order_back()
+    {
+        var widget = await GivenWidget(onHand: 5);
+        var order = OrderFor(widget, 1);
+        // A second line for a widget that does not exist: the order row inserts, then the item
+        // insert violates the foreign key -- everything must unwind, including the first insert.
+        order.Items.Add(new OrderItem
+        {
+            Id = Guid.NewGuid(),
+            WidgetId = Guid.NewGuid(),
+            Sku = "GHOST",
+            Name = "Ghost",
+            UnitPrice = 1m,
+            Quantity = 1,
+            LineSubtotal = 1m,
+        });
+
+        await Assert.ThrowsAsync<Npgsql.PostgresException>(() => Orders.TryPlaceAsync(order, CancellationToken.None));
+
+        Assert.Null(await Orders.GetByIdAsync(order.Id, CancellationToken.None));   // no half-written order
+        Assert.Equal(0, (await Widgets.GetByIdAsync(widget.Id, CancellationToken.None))!.QuantityReserved);
+    }
+
+    [Fact]
+    public async Task A_failure_while_releasing_a_reservation_leaves_the_order_untouched()
+    {
+        var widget = await GivenWidget(onHand: 5);
+        var order = OrderFor(widget, 2);
+        Assert.True(await Orders.TryPlaceAsync(order, CancellationToken.None));
+
+        // Cancel the token the moment the connection is open: the first statement inside the
+        // transaction fails, and the rollback must leave both the order and the reservation as
+        // they were.
+        var cts = new CancellationTokenSource();
+        var flaky = new OrderRepository(new CancelAfterOpenFactory(db.Connections, cts));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => flaky.MarkPaymentFailedAsync(order, "card declined", Now, cts.Token));
+
+        var stored = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
+        Assert.Equal(OrderStatus.Pending, stored!.Status);
+        Assert.Equal(2, (await Widgets.GetByIdAsync(widget.Id, CancellationToken.None))!.QuantityReserved);
+    }
+
+    [Fact]
+    public async Task The_recent_list_is_empty_when_there_are_no_orders()
+    {
+        // Every test cleans up after itself, but be explicit: this asserts the zero-orders
+        // shortcut, so clear whatever the rest of the suite left behind.
+        using var connection = await db.Connections.OpenAsync(CancellationToken.None);
+        await connection.ExecuteAsync("delete from order_items; delete from orders");
+
+        Assert.Empty(await Orders.GetRecentAsync(10, CancellationToken.None));
+    }
+
+    private sealed class CancelAfterOpenFactory(IDbConnectionFactory inner, CancellationTokenSource cts) : IDbConnectionFactory
+    {
+        public async Task<System.Data.IDbConnection> OpenAsync(CancellationToken ct)
+        {
+            var connection = await inner.OpenAsync(ct);
+            cts.Cancel();
+            return connection;
+        }
     }
 }

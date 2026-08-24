@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
+using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Checkout.PlaceOrder;
+using WidgetWorks.Application.Checkout.Quote;
 using WidgetWorks.Application.Pricing;
 using WidgetWorks.Domain.Catalog;
 using WidgetWorks.Domain.Orders;
@@ -33,7 +35,7 @@ public class CheckoutTests
         return new Ctx(carts, widgets, orders, widget, cart.Id);
     }
 
-    private static CheckoutHandler Handler(Ctx c, MockPaymentGateway gateway, FakeEmailSender email)
+    private static CheckoutHandler Handler(Ctx c, MockPaymentGateway gateway, IEmailSender email)
         => new(c.Carts, c.Widgets, c.Orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), gateway, email, Clock());
 
     [Fact]
@@ -49,6 +51,15 @@ public class CheckoutTests
         Assert.Equal(2, c.Widgets.Store[c.Widget.Id].QuantityReserved);
         Assert.Null(await c.Carts.GetAsync(c.CartId, CancellationToken.None));
         Assert.Equal(29.19m, result.Value!.Total);   // 20 + 7.74 shipping + 1.45 tax
+
+        // The whole receipt payload, not just the status: the SPA renders every one of these.
+        var placed = c.Orders.Orders.Single();
+        Assert.Equal(placed.OrderNumber, result.Value!.OrderNumber);
+        Assert.Equal(placed.Id, result.Value!.OrderId);
+        Assert.Equal("Mock", result.Value!.PaymentProvider);
+        Assert.False(string.IsNullOrEmpty(result.Value!.PaymentReference));
+        Assert.Null(result.Value!.ClientSecret);       // synchronous payment needs no client action
+        Assert.Null(result.Value!.NextActionUrl);
         Assert.Contains(email.Sent, m => m.Subject.Contains("received"));
     }
 
@@ -118,5 +129,91 @@ public class CheckoutTests
         var result = await handler.Handle(new CheckoutCommand(cart.Id, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
 
         Assert.True(result.IsFailure);
+    }
+
+    [Theory]
+    [InlineData("", "Springfield", "CA", "90001")]     // no street
+    [InlineData("1 Main St", "", "CA", "90001")]       // no city
+    [InlineData("1 Main St", "Springfield", "", "90001")]  // no state
+    [InlineData("1 Main St", "Springfield", "CA", "")] // no postal code
+    public async Task An_incomplete_shipping_address_is_refused(string line1, string city, string state, string postal)
+    {
+        var c = await SetupAsync();
+        var address = new ShippingAddressInput("Jane Doe", line1, null, city, state, postal, "US");
+
+        var result = await Handler(c, new MockPaymentGateway(), new FakeEmailSender())
+            .Handle(new CheckoutCommand(c.CartId, null, "jane@example.com", address, "Standard", "tok_ok"), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("A complete shipping address is required.", result.Error);
+        Assert.Empty(c.Orders.Orders);
+    }
+
+    [Fact]
+    public async Task Checkout_of_an_unknown_cart_fails()
+    {
+        var c = await SetupAsync();
+
+        var result = await Handler(c, new MockPaymentGateway(), new FakeEmailSender())
+            .Handle(new CheckoutCommand(Guid.NewGuid(), null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Cart not found.", result.Error);
+    }
+
+    [Fact]
+    public async Task A_failed_receipt_email_does_not_fail_a_paid_order()
+    {
+        var c = await SetupAsync();
+
+        var result = await Handler(c, new MockPaymentGateway(), new ThrowingEmailSender())
+            .Handle(new CheckoutCommand(c.CartId, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
+
+        // The money moved; a dead mail server must not turn that into a checkout error.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OrderStatus.Paid, result.Value!.Status);
+        Assert.Equal(OrderStatus.Paid, c.Orders.Orders.Single().Status);
+    }
+
+    [Fact]
+    public async Task A_quote_prices_the_cart_without_placing_anything()
+    {
+        var c = await SetupAsync();
+        var quote = new QuoteCartHandler(c.Carts, c.Widgets, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())));
+
+        var result = await quote.Handle(new QuoteCartCommand(c.CartId, "CA", "Standard"), CancellationToken.None);
+
+        // The checkout page renders every field of the breakdown.
+        Assert.True(result.IsSuccess);
+        var view = result.Value!;
+        Assert.Equal(20m, view.Subtotal);
+        Assert.Equal("Standard", view.ShippingMethod);
+        Assert.Equal(7.74m, view.Shipping);
+        Assert.Equal("CA", view.StateCode);
+        Assert.Equal(0.0725m, view.TaxRate);
+        Assert.Equal(1.45m, view.Tax);
+        Assert.Equal(29.19m, view.Total);
+        Assert.Equal(2, view.ItemCount);
+        Assert.False(view.IsEmpty);
+        Assert.Empty(c.Orders.Orders);
+        Assert.NotNull(await c.Carts.GetAsync(c.CartId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_quote_for_an_unknown_cart_fails()
+    {
+        var c = await SetupAsync();
+        var quote = new QuoteCartHandler(c.Carts, c.Widgets, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())));
+
+        var result = await quote.Handle(new QuoteCartCommand(Guid.NewGuid(), "CA", "Standard"), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Cart not found.", result.Error);
+    }
+
+    private sealed class ThrowingEmailSender : IEmailSender
+    {
+        public Task SendAsync(EmailMessage message, CancellationToken ct)
+            => throw new InvalidOperationException("smtp is down");
     }
 }

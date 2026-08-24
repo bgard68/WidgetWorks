@@ -11,8 +11,8 @@ public class GoogleLoginTests
 {
     private static FakeTimeProvider Clock() => new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
-    private static GoogleLoginHandler Handler(FakeGoogleTokenValidator validator, InMemoryUserRepository users)
-        => new(validator, users, new InMemoryRefreshTokenRepository(), new StubTokenService(), new RecordingAuditLog(), new FakeEmailSender(), Clock());
+    private static GoogleLoginHandler Handler(FakeGoogleTokenValidator validator, InMemoryUserRepository users, IEmailSender? email = null)
+        => new(validator, users, new InMemoryRefreshTokenRepository(), new StubTokenService(), new RecordingAuditLog(), email ?? new FakeEmailSender(), Clock());
 
     [Fact]
     public async Task New_google_user_is_provisioned_and_tokens_issued()
@@ -95,5 +95,54 @@ public class GoogleLoginTests
         var result = await Handler(validator, users).Handle(new GoogleLoginCommand("bad"), CancellationToken.None);
 
         Assert.True(result.IsFailure);
+    }
+
+    [Fact]
+    public async Task A_locked_out_account_cannot_slip_in_through_google()
+    {
+        var users = new InMemoryUserRepository();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "jane@example.com",
+            NormalizedEmail = "JANE@EXAMPLE.COM",
+            SecurityStamp = Guid.NewGuid(),
+            GoogleSub = "google-123",
+            LockedUntil = new DateTimeOffset(2026, 1, 1, 1, 0, 0, TimeSpan.Zero),   // an hour past Clock()
+        };
+        users.Store[user.Id] = user;
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-123", "jane@example.com", true, "Jane") };
+
+        var result = await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Account is temporarily locked. Try again later.", result.Error);
+    }
+
+    [Fact]
+    public async Task Signup_still_succeeds_when_the_welcome_email_fails()
+    {
+        var users = new InMemoryUserRepository();
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-999", "new@example.com", true, "New User") };
+
+        var result = await Handler(validator, users, new ThrowingEmailSender()).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        // A dead mail server must not cost someone their first sign-in.
+        Assert.True(result.IsSuccess);
+        Assert.Single(users.Store);
+
+        // The response carries the whole session the SPA stores.
+        var auth = result.Value!;
+        Assert.False(string.IsNullOrEmpty(auth.AccessToken));
+        Assert.False(string.IsNullOrEmpty(auth.RefreshToken));
+        Assert.True(auth.AccessTokenExpiresAt > Clock().GetUtcNow());
+        Assert.True(auth.RefreshTokenExpiresAt > Clock().GetUtcNow());
+        Assert.Equal(UserRoles.Customer, auth.Role);
+    }
+
+    private sealed class ThrowingEmailSender : IEmailSender
+    {
+        public Task SendAsync(EmailMessage message, CancellationToken ct)
+            => throw new InvalidOperationException("smtp is down");
     }
 }

@@ -1,3 +1,4 @@
+using WidgetWorks.Domain.Audit;
 using WidgetWorks.Domain.Catalog;
 using Xunit;
 
@@ -19,5 +20,21 @@ public class WidgetDomainTests
         var widget = new Widget { QuantityOnHand = 2, QuantityReserved = 5 };
         Assert.Equal(0, widget.QuantityAvailable);
         Assert.False(widget.IsInStock);
+    }
+
+    [Fact]
+    public void An_audit_event_carries_who_did_what_and_when()
+    {
+        var id = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var at = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        var evt = new AuditEvent { Id = id, UserId = userId, Action = "login.success", Detail = "ip 10.0.0.1", CreatedAt = at };
+
+        Assert.Equal(id, evt.Id);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal("login.success", evt.Action);
+        Assert.Equal("ip 10.0.0.1", evt.Detail);
+        Assert.Equal(at, evt.CreatedAt);
     }
 }

@@ -50,6 +50,16 @@ export function renderWithProviders(
  * Stubs fetch with a table of [url fragment, responder] pairs. Anything unmatched fails loudly
  * rather than returning undefined — a silent 200-with-nothing hides more bugs than it catches.
  */
+/**
+ * Stubs fetch with a rejection that is NOT an Error instance. Every page narrows with
+ * `err instanceof Error ? err.message : '…'`; this is what reaches the fallback half, and it is
+ * the difference between a readable message and the string "undefined" on screen.
+ */
+export function stubFetchRejecting() {
+  // eslint-disable-next-line @typescript-eslint/no-throw-literal
+  vi.stubGlobal('fetch', vi.fn(async () => { throw 'network exploded' }))
+}
+
 export function stubFetch(routes: Array<[string, (init?: RequestInit) => unknown]>) {
   const calls: Array<{ url: string; init?: RequestInit }> = []
 

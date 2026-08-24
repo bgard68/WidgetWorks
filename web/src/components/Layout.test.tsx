@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
-import { screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useLocation } from 'react-router-dom'
 import { Layout } from './Layout'
 import { renderWithProviders, signIn, stubFetch, REFRESH_KEY } from '../test/render'
 
@@ -69,4 +70,84 @@ describe('Layout', () => {
 
     expect(screen.getByRole('link', { name: /read the guide/i })).toHaveAttribute('href', '/')
   })
+
+  // ---- search -------------------------------------------------------------------------
+  //
+  // The input is deliberately local state: typing must not re-run the catalog query on every
+  // keystroke, so the URL (and therefore the fetch) only changes on submit.
+
+  const emptyCart = () => ({ id: 'c', userId: null, items: [], subtotal: 0, itemCount: 0 })
+
+  /**
+   * Renders the layout on the guide route, with /store echoing the URL it was navigated to —
+   * so a search can be asserted by the address it produced.
+   */
+  const renderSearching = () =>
+    renderWithProviders(<Layout />, { at: '/', routes: { '/store': <LocationEcho /> } })
+
+  it('submitting the search puts the term in the URL', async () => {
+    stubFetch([['/cart', emptyCart]])
+    const user = userEvent.setup()
+    renderSearching()
+
+    await user.type(screen.getByLabelText('Search widgets'), 'mega')
+    await user.click(screen.getByRole('button', { name: 'Search' }))
+
+    expect(await screen.findByTestId('loc')).toHaveTextContent('/store?q=mega')
+  })
+
+  it('trims the term and drops an all-whitespace search', async () => {
+    stubFetch([['/cart', emptyCart]])
+    const user = userEvent.setup()
+    renderSearching()
+
+    await user.type(screen.getByLabelText('Search widgets'), '   ')
+    await user.click(screen.getByRole('button', { name: 'Search' }))
+
+    // Nothing worth searching for — the plain store URL, not an empty ?q=.
+    const loc = await screen.findByTestId('loc')
+    expect(loc).toHaveTextContent('/store')
+    expect(loc).not.toHaveTextContent('q=')
+  })
+
+  it('choosing a category navigates immediately, keeping any typed term', async () => {
+    stubFetch([['/cart', emptyCart]])
+    const user = userEvent.setup()
+    renderSearching()
+
+    await user.type(screen.getByLabelText('Search widgets'), 'widget')
+    await user.selectOptions(screen.getByLabelText('Search category'), 'mega')
+
+    expect(await screen.findByTestId('loc')).toHaveTextContent('/store?q=widget&cat=mega')
+  })
+
+  it('seeds the search box and scope from the URL', () => {
+    stubFetch([['/cart', emptyCart]])
+    renderWithProviders(<Layout />, { at: '/store?q=kit&cat=kit', path: '/store' })
+
+    expect(screen.getByLabelText('Search widgets')).toHaveValue('kit')
+    expect(screen.getByLabelText('Search category')).toHaveValue('kit')
+    // The rail marks the active category only while actually on the catalog
+    // (the footer links to the same places but is never "current").
+    const rail = within(screen.getByRole('navigation', { name: 'Product categories' }))
+    expect(rail.getByRole('link', { name: 'Kits' })).toHaveClass('on')
+  })
+
+  it('back to top scrolls the window rather than jumping the anchor', async () => {
+    stubFetch([['/cart', emptyCart]])
+    const scrollTo = vi.fn()
+    vi.stubGlobal('scrollTo', scrollTo)
+    const user = userEvent.setup()
+    render()
+
+    await user.click(screen.getByRole('button', { name: 'Back to top' }))
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+  })
 })
+
+/** Renders the current URL so a navigation can be asserted by what lands on screen. */
+function LocationEcho() {
+  const location = useLocation()
+  return <span data-testid="loc">{`${location.pathname}${location.search}`}</span>
+}

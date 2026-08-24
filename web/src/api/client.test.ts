@@ -161,4 +161,69 @@ describe('api client token refresh', () => {
     await expect(client.api('/admin/catalog/widgets', { method: 'POST', body: {} }))
       .rejects.toThrow('SKU already exists.')
   })
+
+  it('omits the Authorization header when signed out', async () => {
+    const client = await loadClient()
+    const fetchMock = vi.fn(async (_input: unknown, _init?: RequestInit) => json(200, { ok: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await client.api('/catalog/widgets')
+
+    // A guest must not send an empty or stale bearer — the API would 401 a
+    // perfectly valid anonymous request.
+    expect(authHeader(fetchMock.mock.calls[0][1])).toBeUndefined()
+  })
+
+  it('returns nothing for a 204 rather than trying to parse it', async () => {
+    const client = await loadClient()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })))
+
+    await expect(client.api('/auth/logout', { method: 'POST', body: {} })).resolves.toBeUndefined()
+  })
+
+  it('returns nothing for an empty 200 body', async () => {
+    const client = await loadClient()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200 })))
+
+    // Some endpoints answer 200 with no body at all; JSON.parse('') would throw.
+    await expect(client.api('/auth/register', { method: 'POST', body: {} })).resolves.toBeUndefined()
+  })
+
+  it('falls back to the status code when an error carries no JSON', async () => {
+    const client = await loadClient()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>502 Bad Gateway</html>', {
+      status: 502, headers: { 'Content-Type': 'text/html' },
+    })))
+
+    // A gateway or proxy error is not JSON; the message must still say something useful.
+    await expect(client.api('/a')).rejects.toThrow('Request failed (502)')
+  })
+
+  it('reports the status when the JSON body has no error field', async () => {
+    const client = await loadClient()
+    vi.stubGlobal('fetch', vi.fn(async () => json(500, { detail: 'something else' })))
+
+    await expect(client.api('/a')).rejects.toThrow('Request failed (500)')
+  })
+
+  it('lets a caller add headers without losing the defaults', async () => {
+    const client = await loadClient()
+    client.setAccessToken('fresh')
+    const fetchMock = vi.fn(async (_input: unknown, _init?: RequestInit) => json(200, { ok: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await client.api('/a', { method: 'POST', body: {} })
+
+    const sent = fetchMock.mock.calls[0][1]?.headers as Record<string, string>
+    expect(sent['Content-Type']).toBe('application/json')
+    expect(sent.Authorization).toBe('Bearer fresh')
+  })
+
+  it('carries the status on the thrown error so callers can branch on it', async () => {
+    const client = await loadClient()
+    vi.stubGlobal('fetch', vi.fn(async () => json(404, { error: 'Cart not found.' })))
+
+    await expect(client.api('/cart/nope')).rejects.toMatchObject({ status: 404, message: 'Cart not found.' })
+    expect(client.ApiError).toBeDefined()
+  })
 })

@@ -140,6 +140,46 @@ public class SeederAndMigrationTests(PostgresFixture db)
         Assert.Equal(2, outcome.Attempts);
     }
 
+    [Fact]
+    public async Task A_failing_script_is_reported_rather_than_thrown()
+    {
+        // A reachable server whose first migration cannot apply: DbUp reports the script error in
+        // its result instead of throwing, and TryRun must surface that the same way it surfaces a
+        // connection failure. Poisoning `users` with a view survives `create table if not exists`
+        // (views share the relation namespace) but fails the index creation that follows.
+        var poisoned = "ww_poison_" + Guid.NewGuid().ToString("N")[..12];
+        var admin = new Npgsql.NpgsqlConnectionStringBuilder(db.ConnectionString) { Database = "postgres" }.ConnectionString;
+        await using var connection = new Npgsql.NpgsqlConnection(admin);
+        await connection.OpenAsync();
+        await using (var create = new Npgsql.NpgsqlCommand($"create database \"{poisoned}\"", connection))
+        {
+            await create.ExecuteNonQueryAsync();
+        }
+
+        var poisonedCs = new Npgsql.NpgsqlConnectionStringBuilder(db.ConnectionString) { Database = poisoned }.ConnectionString;
+        try
+        {
+            await using (var target = new Npgsql.NpgsqlConnection(poisonedCs))
+            {
+                await target.OpenAsync();
+                await using var poison = new Npgsql.NpgsqlCommand("create view users as select 'x' as normalized_email", target);
+                await poison.ExecuteNonQueryAsync();
+            }
+
+            var outcome = MigrationRunner.TryRun(poisonedCs, maxAttempts: 1);
+
+            Assert.False(outcome.Successful);
+            Assert.NotNull(outcome.Error);
+            Assert.Equal(1, outcome.Attempts);
+        }
+        finally
+        {
+            Npgsql.NpgsqlConnection.ClearAllPools();
+            await using var drop = new Npgsql.NpgsqlCommand($"drop database if exists \"{poisoned}\" with (force)", connection);
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
     /// <summary>Deterministic stand-in: the seeder only needs *a* hasher, not a slow one.</summary>
     private sealed class PlainHasher : IPasswordHasher
     {

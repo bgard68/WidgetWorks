@@ -59,6 +59,26 @@ public class ConfirmPaymentTests
     }
 
     [Fact]
+    public async Task A_failed_receipt_email_does_not_fail_the_settlement()
+    {
+        var (ctx, placed, _) = await PlaceAsyncOrder();
+        var confirm = new ConfirmPaymentHandler(ctx.Orders, new ThrowingEmailSender(), Clock());
+
+        var result = await confirm.Handle(
+            new ConfirmPaymentCommand("Mock", PaymentEventType.Succeeded, placed.PaymentReference), CancellationToken.None);
+
+        // The provider settled the money; a 500 here would make it retry a webhook that worked.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OrderStatus.Paid, ctx.Orders.Orders[0].Status);
+    }
+
+    private sealed class ThrowingEmailSender : IEmailSender
+    {
+        public Task SendAsync(EmailMessage message, CancellationToken ct)
+            => throw new InvalidOperationException("smtp is down");
+    }
+
+    [Fact]
     public async Task Failed_webhook_marks_failed_and_releases_reservation()
     {
         var (ctx, placed, email) = await PlaceAsyncOrder();

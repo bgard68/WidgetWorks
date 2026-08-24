@@ -44,7 +44,13 @@ public class PricingTests
     [Fact]
     public void Standard_shipping_is_free_over_threshold()
     {
+        // The threshold consts are decimals, which the compiler backs with a lazily-run static
+        // initializer; running it explicitly keeps the initializer inside the measured suite.
+        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(FlatRateShippingCalculator).TypeHandle);
+
         Assert.Equal(0m, _shipping.Calculate("Standard", 80m, 1).Amount);
+        Assert.Equal(0m, _shipping.Calculate("Standard", 75m, 1).Amount);       // at the threshold exactly
+        Assert.NotEqual(0m, _shipping.Calculate("Standard", 74.99m, 1).Amount); // a cent under pays
     }
 
     [Fact]

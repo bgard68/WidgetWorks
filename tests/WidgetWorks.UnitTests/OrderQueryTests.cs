@@ -255,6 +255,7 @@ public class OrderQueryTests
         Assert.Equal(order.Shipping, view.Shipping);
         Assert.Equal(order.Tax, view.Tax);
         Assert.Equal(order.Total, view.Total);
+        Assert.Equal(order.Email, view.Email);
         Assert.Equal(order.ShippingMethod, view.ShippingMethod);
         Assert.Equal(order.PaymentProvider, view.PaymentProvider);
         Assert.Equal(order.PaymentReference, view.PaymentReference);

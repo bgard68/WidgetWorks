@@ -148,6 +148,15 @@ public class GoogleTokenValidatorTests
     }
 
     [Fact]
+    public async Task A_token_without_a_subject_is_refused()
+    {
+        var (validator, _) = Build();
+
+        // sub is the stable Google account id everything links on; a token without one is useless.
+        Assert.Null(await validator.ValidateAsync(IdToken(GoogleKey, sub: null), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task An_unverified_email_is_returned_but_flagged()
     {
         var (validator, _) = Build();

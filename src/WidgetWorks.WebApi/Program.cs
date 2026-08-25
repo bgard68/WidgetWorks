@@ -17,6 +17,8 @@ using WidgetWorks.WebApi.Checkout;
 using WidgetWorks.WebApi.Orders;
 using WidgetWorks.WebApi.Payments;
 using WidgetWorks.WebApi.Security;
+using WidgetWorks.Application.Checkout.ReleaseStale;
+using WidgetWorks.WebApi.Hosting;
 using WidgetWorks.WebApi.RateLimiting;
 using WidgetWorks.WebApi.TwoFactor;
 
@@ -26,6 +28,14 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddOpenApi();
 builder.Services.AddWidgetWorksRateLimiting(builder.Configuration);
+
+// Stock held by an order whose payment never settles is returned to sale on a timer. Options are
+// bound here so the sweep can be retuned, or turned off for a host that should not run background
+// work, without a code change.
+var reservationOptions = new ReservationOptions();
+builder.Configuration.GetSection("Reservations").Bind(reservationOptions);
+builder.Services.AddSingleton(reservationOptions);
+builder.Services.AddHostedService<ReservationSweeper>();
 
 // CORS for the browser SPA (origins from config; sensible localhost defaults for dev).
 const string SpaCorsPolicy = "spa";

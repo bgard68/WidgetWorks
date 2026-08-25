@@ -34,6 +34,15 @@ public interface IOrderRepository
     /// </summary>
     Task UpdateStatusAsync(Order order, DateTimeOffset now, CancellationToken ct);
 
+    /// <summary>
+    /// Orders still parked in AwaitingPayment since before <paramref name="cutoff"/>, items loaded
+    /// so their reservations can be released. A settlement webhook that never arrives would
+    /// otherwise hold that stock forever.
+    /// </summary>
+    /// <param name="limit">Caps one sweep, so a large backlog is worked through over several passes
+    /// rather than in one long transaction.</param>
+    Task<IReadOnlyList<Order>> GetStaleAwaitingPaymentAsync(DateTimeOffset cutoff, int limit, CancellationToken ct);
+
     Task<Order?> GetByIdAsync(Guid id, CancellationToken ct);
 
     /// <summary>Finds an order by the payment provider + reference stored at authorization time (webhook correlation).</summary>

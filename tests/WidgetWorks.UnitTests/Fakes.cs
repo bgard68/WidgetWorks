@@ -286,6 +286,13 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<Order>> GetStaleAwaitingPaymentAsync(DateTimeOffset cutoff, int limit, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<Order>>(Orders
+            .Where(o => o.Status == OrderStatus.AwaitingPayment && o.UpdatedAt < cutoff)
+            .OrderBy(o => o.UpdatedAt)
+            .Take(limit)
+            .ToList());
+
     public Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
         => Task.FromResult(Orders.FirstOrDefault(o => o.Id == id));
 

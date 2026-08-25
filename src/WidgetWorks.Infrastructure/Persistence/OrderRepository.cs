@@ -185,6 +185,27 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         }
     }
 
+    public async Task<IReadOnlyList<Order>> GetStaleAwaitingPaymentAsync(DateTimeOffset cutoff, int limit, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        var orders = (await db.QueryAsync<Order>(new CommandDefinition(
+            $@"select {OrderColumns} from orders
+               where status = @Status and updated_at < @Cutoff
+               order by updated_at
+               limit @Limit",
+            new { Status = OrderStatus.AwaitingPayment, Cutoff = cutoff, Limit = limit },
+            cancellationToken: ct))).ToList();
+
+        foreach (var order in orders)
+        {
+            order.Items = (await db.QueryAsync<OrderItem>(new CommandDefinition(
+                $"select {ItemColumns} from order_items where order_id = @id order by name",
+                new { id = order.Id }, cancellationToken: ct))).ToList();
+        }
+
+        return orders;
+    }
+
     public async Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);

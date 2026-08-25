@@ -95,15 +95,41 @@ public sealed class WidgetRepository(IDbConnectionFactory factory) : IWidgetRepo
             widget);
     }
 
-    public async Task UpdateAsync(Widget widget, CancellationToken ct)
+    public async Task UpdateDetailsAsync(Widget widget, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
-        await db.ExecuteAsync(
-            @"update widgets set name = @Name, description = @Description, image_url = @ImageUrl, price = @Price,
-                 is_active = @IsActive, quantity_on_hand = @QuantityOnHand, quantity_reserved = @QuantityReserved,
-                 updated_at = @UpdatedAt, archived_at = @ArchivedAt
+        await db.ExecuteAsync(new CommandDefinition(
+            @"update widgets set name = @Name, description = @Description, image_url = @ImageUrl,
+                 price = @Price, is_active = @IsActive, updated_at = @UpdatedAt
               where id = @Id",
-            widget);
+            widget, cancellationToken: ct));
+    }
+
+    public async Task<int?> AdjustStockAsync(Guid id, int delta, DateTimeOffset now, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+
+        // Both guards are predicates on the row's current value, not on a copy the caller read
+        // earlier, so a reservation taken in between is respected rather than trampled. RETURNING
+        // hands back the availability the change actually produced.
+        return await db.ExecuteScalarAsync<int?>(new CommandDefinition(
+            @"update widgets
+                 set quantity_on_hand = quantity_on_hand + @Delta, updated_at = @Now
+               where id = @Id
+                 and archived_at is null
+                 and quantity_on_hand + @Delta >= 0
+                 and quantity_on_hand + @Delta >= quantity_reserved
+               returning quantity_on_hand - quantity_reserved",
+            new { Id = id, Delta = delta, Now = now }, cancellationToken: ct));
+    }
+
+    public async Task ArchiveAsync(Guid id, DateTimeOffset archivedAt, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        await db.ExecuteAsync(new CommandDefinition(
+            @"update widgets set is_active = false, archived_at = @ArchivedAt, updated_at = @ArchivedAt
+              where id = @Id",
+            new { Id = id, ArchivedAt = archivedAt }, cancellationToken: ct));
     }
 
     public async Task<int> CountOrderLinesAsync(Guid widgetId, CancellationToken ct)

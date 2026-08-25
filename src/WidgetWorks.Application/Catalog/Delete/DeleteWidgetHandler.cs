@@ -49,10 +49,7 @@ public sealed class DeleteWidgetHandler(IWidgetRepository widgets, TimeProvider 
         }
 
         var now = clock.GetUtcNow();
-        widget.IsActive = false;
-        widget.ArchivedAt = now;
-        widget.UpdatedAt = now;
-        await widgets.UpdateAsync(widget, ct);
+        await widgets.ArchiveAsync(command.Id, now, ct);
 
         return Result<DeleteWidgetResult>.Success(new DeleteWidgetResult(DeleteWidgetOutcome.Archived, orderLines));
     }

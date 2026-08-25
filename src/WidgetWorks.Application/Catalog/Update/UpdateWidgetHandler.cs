@@ -39,7 +39,7 @@ public sealed class UpdateWidgetHandler(IWidgetRepository widgets, TimeProvider 
         widget.IsActive = command.IsActive;
         widget.UpdatedAt = clock.GetUtcNow();
 
-        await widgets.UpdateAsync(widget, ct);
+        await widgets.UpdateDetailsAsync(widget, ct);
         return Result.Success();
     }
 }

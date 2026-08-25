@@ -15,16 +15,17 @@ export interface Category {
   label: string
   /** Word matched against a widget's name/sku/description. */
   keyword: string
+  /** Key into the CategoryIcon glyph set. */
   icon: string
 }
 
 export const CATEGORIES: Category[] = [
-  { slug: '', label: 'All departments', keyword: '', icon: '🏬' },
-  { slug: 'standard', label: 'Standard', keyword: 'standard', icon: '🔩' },
-  { slug: 'deluxe', label: 'Deluxe', keyword: 'deluxe', icon: '✨' },
-  { slug: 'mega', label: 'Mega', keyword: 'mega', icon: '🏗️' },
-  { slug: 'mini', label: 'Mini', keyword: 'mini', icon: '🧩' },
-  { slug: 'kit', label: 'Kits', keyword: 'kit', icon: '🧰' },
+  { slug: '', label: 'All departments', keyword: '', icon: 'all' },
+  { slug: 'standard', label: 'Standard', keyword: 'standard', icon: 'standard' },
+  { slug: 'deluxe', label: 'Deluxe', keyword: 'deluxe', icon: 'deluxe' },
+  { slug: 'mega', label: 'Mega', keyword: 'mega', icon: 'mega' },
+  { slug: 'mini', label: 'Mini', keyword: 'mini', icon: 'mini' },
+  { slug: 'kit', label: 'Kits', keyword: 'kit', icon: 'kit' },
 ]
 
 export const SORTS = [

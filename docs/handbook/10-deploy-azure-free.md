@@ -345,7 +345,7 @@ it:
   `accounts.google.com/gsi/client` and renders inside a Google-hosted frame, so the policy must
   allow `accounts.google.com` in `script-src`, `frame-src` and `connect-src`, plus
   `*.googleusercontent.com` in `img-src` for avatars. Under a default policy Google sign-in fails
-  silently. `img-src` also allows `picsum.photos`, which serves the placeholder product photos.
+  silently. The bundled product illustrations are same-origin, so `img-src` needs no extra hosts for them.
 
 `connect-src` ships with a `REPLACE_API_ORIGIN` placeholder — the browser must be allowed to call
 the API, and its hostname isn't known until step 4. Substitute it into the built output:

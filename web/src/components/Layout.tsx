@@ -211,7 +211,7 @@ export function Layout() {
         <div className="foot-bar">
           © {new Date().getFullYear()} WidgetWorks
           <span className="sep">·</span>Demo store — no real orders are fulfilled
-          <span className="sep">·</span>Sample product photography
+          <span className="sep">·</span>Illustrated product art
         </div>
       </footer>
     </div>

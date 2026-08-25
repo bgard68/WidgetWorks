@@ -36,7 +36,7 @@ public sealed class UpdateOrderStatusHandler(
 
         var now = clock.GetUtcNow();
         order.TransitionTo(target, command.TrackingNumber, now);
-        await orders.UpdateStatusAsync(order.Id, order.Status, order.TrackingNumber, now, ct);
+        await orders.UpdateStatusAsync(order, now, ct);
 
         try
         {

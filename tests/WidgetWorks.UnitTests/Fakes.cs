@@ -235,12 +235,33 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         return Task.CompletedTask;
     }
 
-    public Task UpdateStatusAsync(Guid orderId, string status, string? trackingNumber, DateTimeOffset now, CancellationToken ct)
+    public Task UpdateStatusAsync(Order order, DateTimeOffset now, CancellationToken ct)
     {
-        var order = Orders.First(o => o.Id == orderId);
-        order.Status = status;
-        order.TrackingNumber = trackingNumber;
-        order.UpdatedAt = now;
+        var stored = Orders.First(o => o.Id == order.Id);
+        stored.Status = order.Status;
+        stored.TrackingNumber = order.TrackingNumber;
+        stored.UpdatedAt = now;
+
+        // Mirrors OrderRepository: shipping converts the reservation into a real
+        // decrement, cancelling hands it back, delivery moves nothing.
+        foreach (var item in order.Items)
+        {
+            if (!widgets.Store.TryGetValue(item.WidgetId, out var w))
+            {
+                continue;
+            }
+
+            if (order.Status == OrderStatus.Shipped)
+            {
+                w.QuantityOnHand -= item.Quantity;
+                w.QuantityReserved -= item.Quantity;
+            }
+            else if (order.Status == OrderStatus.Cancelled)
+            {
+                w.QuantityReserved -= item.Quantity;
+            }
+        }
+
         return Task.CompletedTask;
     }
 

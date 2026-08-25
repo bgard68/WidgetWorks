@@ -247,6 +247,60 @@ public class OrderRepositoryTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task A_repeated_payment_failure_releases_the_reservation_only_once()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, 3);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+
+        var first = await Orders.MarkPaymentFailedAsync(order, "declined", Now, CancellationToken.None);
+        var second = await Orders.MarkPaymentFailedAsync(order, "declined", Now, CancellationToken.None);
+
+        Assert.True(first);
+        // The row, not the caller, decides. A redelivered webhook is declined rather than
+        // decrementing quantity_reserved a second time and eating another order's stock.
+        Assert.False(second);
+
+        var after = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(10, after!.QuantityOnHand);
+        Assert.Equal(0, after.QuantityReserved);
+    }
+
+    [Fact]
+    public async Task A_late_settlement_cannot_overwrite_an_order_that_already_failed()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, 2);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+        await Orders.MarkPaymentFailedAsync(order, "declined", Now, CancellationToken.None);
+
+        var settled = await Orders.MarkPaidAsync(order.Id, "Mock", "ref-1", Now.AddMinutes(1), CancellationToken.None);
+
+        // Marking it paid here would claim money for an order whose stock is already back on sale.
+        Assert.False(settled);
+        var stored = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
+        Assert.Equal(OrderStatus.PaymentFailed, stored!.Status);
+    }
+
+    [Fact]
+    public async Task A_settled_order_cannot_be_failed_by_a_stale_event()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, 2);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+        await Orders.MarkPaidAsync(order.Id, "Mock", "ref-2", Now, CancellationToken.None);
+
+        var failed = await Orders.MarkPaymentFailedAsync(order, "stale", Now.AddMinutes(1), CancellationToken.None);
+
+        Assert.False(failed);
+        var stored = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
+        Assert.Equal(OrderStatus.Paid, stored!.Status);
+        // The reservation must survive: the goods are sold and still owed to this order.
+        var after = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(2, after!.QuantityReserved);
+    }
+
+    [Fact]
     public async Task Shipping_turns_the_reservation_into_a_real_decrement()
     {
         var widget = await GivenWidget(onHand: 5);

@@ -95,7 +95,10 @@ public sealed class CheckoutHandler(
 
         if (payment.Status == PaymentStatus.Declined)
         {
-            await orders.MarkPaymentFailedAsync(order, payment.Error ?? "Payment failed.", clock.GetUtcNow(), ct);
+            // Discarded deliberately: this order was created moments ago and is still Pending, so
+            // the compare-and-set cannot decline. A webhook arriving later is the contended path,
+            // and ConfirmPaymentHandler is where the answer is acted on.
+            _ = await orders.MarkPaymentFailedAsync(order, payment.Error ?? "Payment failed.", clock.GetUtcNow(), ct);
             return Fail(payment.Error ?? "Payment failed.");
         }
 
@@ -105,7 +108,7 @@ public sealed class CheckoutHandler(
         {
             // Async settlement (redirect/BNPL): keep the reservation, park the order, and let the
             // provider webhook finalize it. The receipt email is sent on confirmation, not here.
-            await orders.MarkAwaitingPaymentAsync(order.Id, payment.Provider, reference, clock.GetUtcNow(), ct);
+            _ = await orders.MarkAwaitingPaymentAsync(order.Id, payment.Provider, reference, clock.GetUtcNow(), ct);
             order.Status = OrderStatus.AwaitingPayment;
             await carts.DeleteAsync(cart.Id, ct);
 
@@ -115,7 +118,7 @@ public sealed class CheckoutHandler(
         }
 
         // Synchronous success.
-        await orders.MarkPaidAsync(order.Id, payment.Provider, reference, clock.GetUtcNow(), ct);
+        _ = await orders.MarkPaidAsync(order.Id, payment.Provider, reference, clock.GetUtcNow(), ct);
         order.Status = OrderStatus.Paid;
         await carts.DeleteAsync(cart.Id, ct);
 

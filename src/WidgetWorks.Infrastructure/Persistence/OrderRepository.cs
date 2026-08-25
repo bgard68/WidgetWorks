@@ -75,31 +75,56 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         }
     }
 
-    public async Task MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    /// <summary>
+    /// The statuses a settlement outcome may still be applied from. Anything else means the order
+    /// has already moved on and a late or repeated event must not touch it.
+    /// </summary>
+    private static readonly string[] AwaitingSettlement = [OrderStatus.Pending, OrderStatus.AwaitingPayment];
+
+    public async Task<bool> MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
-        await db.ExecuteAsync(
-            "update orders set status = @Status, payment_provider = @Provider, payment_reference = @Reference, updated_at = @Now where id = @Id",
-            new { Id = orderId, Status = OrderStatus.AwaitingPayment, Provider = provider, Reference = reference, Now = now });
+        var affected = await db.ExecuteAsync(new CommandDefinition(
+            @"update orders set status = @Status, payment_provider = @Provider, payment_reference = @Reference, updated_at = @Now
+              where id = @Id and status = @Expected",
+            new { Id = orderId, Status = OrderStatus.AwaitingPayment, Provider = provider, Reference = reference, Now = now, Expected = OrderStatus.Pending },
+            cancellationToken: ct));
+        return affected == 1;
     }
 
-    public async Task MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    public async Task<bool> MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
-        await db.ExecuteAsync(
-            "update orders set status = @Status, payment_provider = @Provider, payment_reference = @Reference, updated_at = @Now where id = @Id",
-            new { Id = orderId, Status = OrderStatus.Paid, Provider = provider, Reference = reference, Now = now });
+        var affected = await db.ExecuteAsync(new CommandDefinition(
+            @"update orders set status = @Status, payment_provider = @Provider, payment_reference = @Reference, updated_at = @Now
+              where id = @Id and status = any(@Expected)",
+            new { Id = orderId, Status = OrderStatus.Paid, Provider = provider, Reference = reference, Now = now, Expected = AwaitingSettlement },
+            cancellationToken: ct));
+        return affected == 1;
     }
 
-    public async Task MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct)
+    public async Task<bool> MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
         using var tx = db.BeginTransaction();
         try
         {
-            await db.ExecuteAsync(new CommandDefinition(
-                "update orders set status = @Status, updated_at = @Now where id = @Id",
-                new { Id = order.Id, Status = OrderStatus.PaymentFailed, Now = now }, tx, cancellationToken: ct));
+            // Compare-and-set inside the transaction, so the row decides who wins rather than the
+            // caller. Two concurrent deliveries of the same failure both pass an application-level
+            // status check; only one can win this update, and only the winner releases the
+            // reservation. Without it a redelivered webhook decrements quantity_reserved a second
+            // time and eats stock still held by a different order.
+            var applied = await db.ExecuteAsync(new CommandDefinition(
+                @"update orders set status = @Status, updated_at = @Now
+                  where id = @Id and status = any(@Expected)",
+                new { Id = order.Id, Status = OrderStatus.PaymentFailed, Now = now, Expected = AwaitingSettlement },
+                tx, cancellationToken: ct));
+
+            if (applied != 1)
+            {
+                tx.Rollback();
+                return false;
+            }
 
             foreach (var item in order.Items)
             {
@@ -108,6 +133,7 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
             }
 
             tx.Commit();
+            return true;
         }
         catch
         {

@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Paged, WidgetView } from '../api/types'
 import { pseudoRating } from '../lib/img'
-import { CATEGORIES, FREE_SHIPPING_THRESHOLD, PAGE_SIZE, SORTS, categoryBySlug, refine } from '../lib/catalog'
+import { CATEGORIES, FREE_SHIPPING_THRESHOLD, PAGE_SIZE, SORTS, categoryBySlug } from '../lib/catalog'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { AddToCartButton } from '../components/AddToCartButton'
 import { ProductImage } from '../components/ProductImage'
@@ -58,14 +58,20 @@ export function CatalogPage() {
     setLoading(true)
     const sp = new URLSearchParams({ pageSize: String(PAGE_SIZE) })
     if (q.trim()) sp.set('search', q.trim())
+    // Category and sort are the server's job. Narrowing a single fetched page in the browser
+    // silently dropped anything past that page from a shelf, and sorted only what happened to be
+    // on it. Asking the API means both apply to the whole matching set.
+    const keyword = categoryBySlug(cat)?.keyword
+    if (keyword) sp.set('category', keyword)
+    if (sort) sp.set('sort', sort)
     api<Paged<WidgetView>>(`/catalog/widgets?${sp}`)
       .then((d) => { if (active) { setData(d); setError(null) } })
       .catch((e) => { if (active) setError(e.message) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [q])
+  }, [q, cat, sort])
 
-  const items = useMemo(() => refine(data?.items ?? [], cat, sort), [data, cat, sort])
+  const items = data?.items ?? []
 
   const category = categoryBySlug(cat)
   const browsing = !q && !cat

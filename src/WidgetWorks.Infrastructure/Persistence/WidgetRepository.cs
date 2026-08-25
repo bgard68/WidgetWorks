@@ -14,7 +14,38 @@ public sealed class WidgetRepository(IDbConnectionFactory factory) : IWidgetRepo
     private const string Filter =
         @"where archived_at is null
             and (@ActiveOnly = false or is_active = true)
-            and (@Search is null or name ilike @Pattern or sku ilike @Pattern)";
+            and (@Search is null or name ilike @Pattern or sku ilike @Pattern)
+            and (@Category is null or name ilike @CategoryPattern or sku ilike @CategoryPattern)";
+
+    /// <summary>
+    /// Sort clauses, chosen by key rather than built from the caller's string - the only safe way to
+    /// put user input near an order-by. An unknown key sorts by name, which is the catalogue default.
+    /// Every clause ends with name so paging is stable when prices tie; without a total ordering the
+    /// same row can appear on two pages.
+    /// </summary>
+    private static string OrderBy(string? sort) => sort switch
+    {
+        WidgetSort.PriceAscending => "order by price asc, name asc",
+        WidgetSort.PriceDescending => "order by price desc, name asc",
+        WidgetSort.Name => "order by name asc",
+
+        // Featured leads with what can actually be bought and pushes sold-out items to the end.
+        // This used to happen in the browser over one page, which quietly meant "in stock on this
+        // page first"; done here it holds across the whole result set.
+        _ => "order by ((quantity_on_hand - quantity_reserved) > 0) desc, name asc",
+    };
+
+    /// <summary>Parameters shared by the listing and its count, so the two can never diverge.</summary>
+    private static object FilterParameters(WidgetQuery query) => new
+    {
+        query.ActiveOnly,
+        query.Search,
+        Pattern = query.Search is null ? null : $"%{query.Search}%",
+        query.Category,
+        CategoryPattern = query.Category is null ? null : $"%{query.Category}%",
+        Limit = query.PageSize,
+        query.Offset,
+    };
 
     public async Task<Widget?> GetByIdAsync(Guid id, CancellationToken ct)
     {
@@ -35,34 +66,24 @@ public sealed class WidgetRepository(IDbConnectionFactory factory) : IWidgetRepo
     public async Task<IReadOnlyList<Widget>> SearchAsync(WidgetQuery query, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
-        var rows = await db.QueryAsync<Widget>(
+        var rows = await db.QueryAsync<Widget>(new CommandDefinition(
             $@"select {Columns} from widgets
                {Filter}
-               order by name
+               {OrderBy(query.Sort)}
                limit @Limit offset @Offset",
-            new
-            {
-                query.ActiveOnly,
-                query.Search,
-                Pattern = query.Search is null ? null : $"%{query.Search}%",
-                Limit = query.PageSize,
-                query.Offset,
-            });
+            FilterParameters(query),
+            cancellationToken: ct));
         return rows.ToList();
     }
 
     public async Task<int> CountAsync(WidgetQuery query, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
-        return await db.ExecuteScalarAsync<int>(
+        return await db.ExecuteScalarAsync<int>(new CommandDefinition(
             $@"select count(*) from widgets
                {Filter}",
-            new
-            {
-                query.ActiveOnly,
-                query.Search,
-                Pattern = query.Search is null ? null : $"%{query.Search}%",
-            });
+            FilterParameters(query),
+            cancellationToken: ct));
     }
 
     public async Task AddAsync(Widget widget, CancellationToken ct)

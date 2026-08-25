@@ -25,7 +25,7 @@ public class CatalogAndAuthRepositoryTests(PostgresFixture db)
 
     private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..10];
 
-    private async Task<Widget> GivenWidget(int onHand = 10, bool active = true, string? name = null)
+    private async Task<Widget> GivenWidget(int onHand = 10, bool active = true, string? name = null, decimal price = 12.5m, int reserved = 0)
     {
         var widget = new Widget
         {
@@ -33,9 +33,9 @@ public class CatalogAndAuthRepositoryTests(PostgresFixture db)
             Sku = Unique("SKU-").ToUpperInvariant(),
             Name = name ?? Unique("Widget "),
             Description = "Integration fixture.",
-            Price = 12.5m,
+            Price = price,
             QuantityOnHand = onHand,
-            QuantityReserved = 0,
+            QuantityReserved = reserved,
             IsActive = active,
             CreatedAt = Now,
             UpdatedAt = Now,
@@ -532,5 +532,105 @@ public class CatalogAndAuthRepositoryTests(PostgresFixture db)
 
         // No read side on the port; the assertion is that neither write throws or violates the FK.
         Assert.NotNull(await Users.GetByIdAsync(user.Id, CancellationToken.None));
+    }
+
+    // ---- category narrowing and ordering, moved here from the browser -------------------------
+    // These replace the refine() unit tests: the behaviour is SQL now, so this is where it is
+    // proven. Every case scopes itself with a unique token so a shared database stays usable.
+
+    [Fact]
+    public async Task A_category_narrows_the_listing_to_its_members()
+    {
+        var token = Unique("cat");
+        await GivenWidget(name: $"Mega Widget Block {token}");
+        await GivenWidget(name: $"Mega Widget Hub {token}");
+        await GivenWidget(name: $"Mini Widget Block {token}");
+
+        var query = new WidgetQuery($"{token}", ActiveOnly: true, 1, 50, Category: "mega");
+        var results = await Widgets.SearchAsync(query, CancellationToken.None);
+
+        Assert.Equal(2, results.Count);
+        Assert.All(results, w => Assert.Contains("Mega", w.Name, StringComparison.Ordinal));
+        // The count has to agree with the page, or the storefront reports a total it never shows.
+        Assert.Equal(2, await Widgets.CountAsync(query, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_search_and_a_category_narrow_together_rather_than_either_or()
+    {
+        var token = Unique("both");
+        await GivenWidget(name: $"Mega Widget Turbine {token}");
+        await GivenWidget(name: $"Mega Widget Block {token}");
+        await GivenWidget(name: $"Mini Widget Turbine {token}");
+
+        var results = await Widgets.SearchAsync(
+            new WidgetQuery($"Turbine {token}", ActiveOnly: true, 1, 50, Category: "mega"),
+            CancellationToken.None);
+
+        // "Turbine" within Mega means both conditions, not their union.
+        Assert.Single(results);
+        Assert.Contains("Mega Widget Turbine", results[0].Name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task No_category_leaves_the_listing_alone()
+    {
+        var token = Unique("nocat");
+        await GivenWidget(name: $"Mega Widget {token}");
+        await GivenWidget(name: $"Mini Widget {token}");
+
+        var results = await Widgets.SearchAsync(
+            new WidgetQuery(token, ActiveOnly: true, 1, 50, Category: null),
+            CancellationToken.None);
+
+        Assert.Equal(2, results.Count);
+    }
+
+    [Fact]
+    public async Task Price_sorts_run_in_both_directions()
+    {
+        var token = Unique("price");
+        await GivenWidget(name: $"B {token}", price: 30m);
+        await GivenWidget(name: $"A {token}", price: 10m);
+        await GivenWidget(name: $"C {token}", price: 20m);
+
+        var ascending = await Widgets.SearchAsync(
+            new WidgetQuery(token, ActiveOnly: true, 1, 50, Sort: WidgetSort.PriceAscending), CancellationToken.None);
+        var descending = await Widgets.SearchAsync(
+            new WidgetQuery(token, ActiveOnly: true, 1, 50, Sort: WidgetSort.PriceDescending), CancellationToken.None);
+
+        Assert.Equal([10m, 20m, 30m], ascending.Select(w => w.Price));
+        Assert.Equal([30m, 20m, 10m], descending.Select(w => w.Price));
+    }
+
+    [Fact]
+    public async Task Featured_leads_with_what_can_actually_be_bought()
+    {
+        var token = Unique("feat");
+        await GivenWidget(name: $"A sold out {token}", onHand: 5, reserved: 5);
+        await GivenWidget(name: $"B in stock {token}", onHand: 5);
+
+        var results = await Widgets.SearchAsync(
+            new WidgetQuery(token, ActiveOnly: true, 1, 50, Sort: WidgetSort.Featured), CancellationToken.None);
+
+        // Alphabetically the sold-out one comes first; availability outranks the name.
+        Assert.Contains("in stock", results[0].Name, StringComparison.Ordinal);
+        Assert.Contains("sold out", results[1].Name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_unknown_sort_falls_back_instead_of_reaching_the_database()
+    {
+        var token = Unique("inject");
+        await GivenWidget(name: $"A {token}");
+        await GivenWidget(name: $"B {token}");
+
+        // The value is mapped through a fixed set, never interpolated, so even this is inert.
+        var results = await Widgets.SearchAsync(
+            new WidgetQuery(token, ActiveOnly: true, 1, 50, Sort: "price; drop table widgets"),
+            CancellationToken.None);
+
+        Assert.Equal(2, results.Count);
+        Assert.Contains($"A {token}", results[0].Name, StringComparison.Ordinal);
     }
 }

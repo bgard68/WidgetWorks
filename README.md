@@ -44,7 +44,8 @@ docker compose up --build
 | Store (SPA) | http://localhost:3000/store |
 | **Mailpit** — every email the app sends | http://localhost:8025 |
 | API + Scalar (interactive API UI) | http://localhost:8080/scalar/v1 |
-| Health | http://localhost:8080/health |
+| Health (liveness — no database) | http://localhost:8080/health |
+| Readiness (queries the database) | http://localhost:8080/health/ready |
 
 Migrations and demo seed run automatically on API start. For running the API on the host
 with fast iteration (and the exact port/user-secrets details), see

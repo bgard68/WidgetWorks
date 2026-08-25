@@ -75,7 +75,7 @@ public class CartHandlerTests
         var created = await add.Handle(new AddCartItemCommand(null, null, widget.Id, 2), CancellationToken.None);
 
         var update = new UpdateCartItemHandler(carts, widgets, Clock());
-        var result = await update.Handle(new UpdateCartItemCommand(created.Value!.Id, widget.Id, 0), CancellationToken.None);
+        var result = await update.Handle(new UpdateCartItemCommand(created.Value!.Id, widget.Id, 0, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!.Items);

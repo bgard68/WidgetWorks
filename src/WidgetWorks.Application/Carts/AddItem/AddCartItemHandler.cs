@@ -40,7 +40,10 @@ public sealed class AddCartItemHandler(ICartRepository carts, IWidgetRepository 
 
     private async Task<Cart> ResolveCartAsync(Guid? cartId, Guid? userId, CancellationToken ct)
     {
-        if (cartId is { } id && await carts.GetAsync(id, ct) is { } existing)
+        // A supplied id is only honoured when the caller may actually use that cart. A foreign one
+        // falls through to the caller's own rather than erroring, so an attacker learns nothing about
+        // whether the id existed and an honest client with a stale id simply carries on.
+        if (cartId is { } id && await carts.GetAsync(id, ct) is { } existing && CartAccess.IsPermitted(existing, userId))
         {
             return existing;
         }

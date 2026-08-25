@@ -19,6 +19,7 @@ using WidgetWorks.Application.Catalog.Inventory;
 using WidgetWorks.Application.Catalog.Update;
 using WidgetWorks.Application.Checkout.ConfirmPayment;
 using WidgetWorks.Application.Checkout.PlaceOrder;
+using WidgetWorks.Application.Checkout.ReleaseStale;
 using WidgetWorks.Application.Checkout.Quote;
 using WidgetWorks.Application.Orders.Admin;
 using WidgetWorks.Application.Orders.GetMine;
@@ -67,6 +68,7 @@ public static class DependencyInjection
         services.AddScoped<MergeCartHandler>();
         services.AddScoped<QuoteCartHandler>();
         services.AddScoped<CheckoutHandler>();
+        services.AddScoped<ReleaseStaleReservationsHandler>();
         services.AddScoped<ConfirmPaymentHandler>();
         services.AddScoped<GuestOrderLookupHandler>();
         services.AddScoped<ListMyOrdersHandler>();

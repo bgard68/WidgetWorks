@@ -13,9 +13,9 @@ public static class CartEndpoints
     {
         var cart = routes.MapGroup("/cart");
 
-        cart.MapGet("/{cartId:guid}", async (Guid cartId, GetCartHandler handler, CancellationToken ct) =>
+        cart.MapGet("/{cartId:guid}", async (Guid cartId, ClaimsPrincipal principal, GetCartHandler handler, CancellationToken ct) =>
         {
-            var result = await handler.Handle(new GetCartQuery(cartId), ct);
+            var result = await handler.Handle(new GetCartQuery(cartId, UserId(principal)), ct);
             return result.IsSuccess ? Results.Ok(result.Value) : Results.NotFound(new { error = result.Error });
         });
 
@@ -26,15 +26,15 @@ public static class CartEndpoints
             return result.IsSuccess ? Results.Ok(result.Value) : Results.BadRequest(new { error = result.Error });
         });
 
-        cart.MapPut("/{cartId:guid}/items/{widgetId:guid}", async (Guid cartId, Guid widgetId, UpdateItemRequest body, UpdateCartItemHandler handler, CancellationToken ct) =>
+        cart.MapPut("/{cartId:guid}/items/{widgetId:guid}", async (Guid cartId, Guid widgetId, UpdateItemRequest body, ClaimsPrincipal principal, UpdateCartItemHandler handler, CancellationToken ct) =>
         {
-            var result = await handler.Handle(new UpdateCartItemCommand(cartId, widgetId, body.Quantity), ct);
+            var result = await handler.Handle(new UpdateCartItemCommand(cartId, widgetId, body.Quantity, UserId(principal)), ct);
             return result.IsSuccess ? Results.Ok(result.Value) : Results.BadRequest(new { error = result.Error });
         });
 
-        cart.MapDelete("/{cartId:guid}/items/{widgetId:guid}", async (Guid cartId, Guid widgetId, RemoveCartItemHandler handler, CancellationToken ct) =>
+        cart.MapDelete("/{cartId:guid}/items/{widgetId:guid}", async (Guid cartId, Guid widgetId, ClaimsPrincipal principal, RemoveCartItemHandler handler, CancellationToken ct) =>
         {
-            var result = await handler.Handle(new RemoveCartItemCommand(cartId, widgetId), ct);
+            var result = await handler.Handle(new RemoveCartItemCommand(cartId, widgetId, UserId(principal)), ct);
             return result.IsSuccess ? Results.Ok(result.Value) : Results.NotFound(new { error = result.Error });
         });
 

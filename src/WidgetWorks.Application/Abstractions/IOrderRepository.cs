@@ -7,13 +7,24 @@ public interface IOrderRepository
     /// <summary>Atomically inserts the order and reserves stock. Returns false (rolled back) if any line is short.</summary>
     Task<bool> TryPlaceAsync(Order order, CancellationToken ct);
 
-    /// <summary>Records the provider + reference and parks the order in AwaitingPayment (async settlement).</summary>
-    Task MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct);
+    /// <summary>
+    /// Records the provider + reference and parks the order in AwaitingPayment (async settlement).
+    /// Returns false when the order had already moved on, so the write was declined.
+    /// </summary>
+    Task<bool> MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct);
 
-    Task MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct);
+    /// <summary>
+    /// Settles the order. Returns false when it was no longer awaiting settlement — a duplicate or
+    /// out-of-order provider event, which must not overwrite a decided order.
+    /// </summary>
+    Task<bool> MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct);
 
-    /// <summary>Marks the order failed and releases its inventory reservations.</summary>
-    Task MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct);
+    /// <summary>
+    /// Marks the order failed and releases its inventory reservations, atomically. Returns false
+    /// when the order had already moved on; the caller must treat that as "someone else handled it"
+    /// rather than retrying, because the stock has already been dealt with.
+    /// </summary>
+    Task<bool> MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct);
 
     /// <summary>
     /// Persists a fulfilment transition together with the inventory movement it implies, in one
@@ -22,6 +33,15 @@ public interface IOrderRepository
     /// status on it decides the movement.
     /// </summary>
     Task UpdateStatusAsync(Order order, DateTimeOffset now, CancellationToken ct);
+
+    /// <summary>
+    /// Orders still parked in AwaitingPayment since before <paramref name="cutoff"/>, items loaded
+    /// so their reservations can be released. A settlement webhook that never arrives would
+    /// otherwise hold that stock forever.
+    /// </summary>
+    /// <param name="limit">Caps one sweep, so a large backlog is worked through over several passes
+    /// rather than in one long transaction.</param>
+    Task<IReadOnlyList<Order>> GetStaleAwaitingPaymentAsync(DateTimeOffset cutoff, int limit, CancellationToken ct);
 
     Task<Order?> GetByIdAsync(Guid id, CancellationToken ct);
 

@@ -29,6 +29,7 @@ public sealed class ApiFixture : IAsyncLifetime
     private const string SigningKey = "test-signing-key-api-suite-0123456789abcdef";
 
     private string _adminConnectionString = DefaultAdmin;
+    private string _connectionString = DefaultAdmin;
 
     public const string AdminEmail = "api-admin@widgetworks.test";
     public const string ManagerEmail = "api-manager@widgetworks.test";
@@ -57,10 +58,24 @@ public sealed class ApiFixture : IAsyncLifetime
         // UseSetting lands in host configuration, which minimal hosting folds into
         // builder.Configuration BEFORE Program's own code reads it; ConfigureAppConfiguration
         // callbacks would run too late for the Jwt options Program binds during startup.
-        Factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+        _connectionString = connectionString;
+        Factory = BuildFactory();
+
+        // First client boots the host: migrations run and the demo catalog is seeded.
+        using var client = Factory.CreateClient();
+        var health = await client.GetAsync("/health");
+        health.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// The host every test shares. Settings go through UseSetting because minimal hosting folds
+    /// host configuration into builder.Configuration before Program reads it.
+    /// </summary>
+    private WebApplicationFactory<Program> BuildFactory(params (string Key, string Value)[] overrides)
+        => new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
         {
             host.UseEnvironment(Environments.Production);   // no OpenAPI/Scalar noise in tests
-            host.UseSetting("ConnectionStrings:WidgetWorks", connectionString);
+            host.UseSetting("ConnectionStrings:WidgetWorks", _connectionString);
             host.UseSetting("Jwt:SigningKey", SigningKey);
             host.UseSetting("Seed:DemoAdminEmail", AdminEmail);
             host.UseSetting("Seed:DemoAdminPassword", Password);
@@ -68,13 +83,28 @@ public sealed class ApiFixture : IAsyncLifetime
             host.UseSetting("Seed:DemoManagerPassword", Password);
             host.UseSetting("Seed:DemoCustomerEmail", CustomerEmail);
             host.UseSetting("Seed:DemoCustomerPassword", Password);
+
+            // Every request from the test server arrives with no remote address, so all of them
+            // share one throttling partition and the suite would exhaust a realistic budget
+            // between tests. Raised here rather than weakened in the production defaults --
+            // RateLimitingApiTests overrides these back down to prove the limiter really rejects.
+            host.UseSetting("RateLimiting:Auth:PermitLimit", "100000");
+            host.UseSetting("RateLimiting:Checkout:PermitLimit", "100000");
+            host.UseSetting("RateLimiting:Lookup:PermitLimit", "100000");
+
+            foreach (var (key, value) in overrides)
+            {
+                host.UseSetting(key, value);
+            }
         });
 
-        // First client boots the host: migrations run and the demo catalog is seeded.
-        using var client = Factory.CreateClient();
-        var health = await client.GetAsync("/health");
-        health.EnsureSuccessStatusCode();
-    }
+    /// <summary>
+    /// A second host on the same database with configuration overrides applied — for tests that
+    /// need to exercise behaviour the shared host deliberately turns down, such as throttling.
+    /// The caller owns the returned factory and should dispose it.
+    /// </summary>
+    public WebApplicationFactory<Program> FactoryWith(params (string Key, string Value)[] overrides)
+        => BuildFactory(overrides);
 
     public async Task DisposeAsync()
     {

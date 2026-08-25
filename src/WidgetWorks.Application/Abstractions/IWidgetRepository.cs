@@ -3,9 +3,33 @@ using WidgetWorks.Domain.Catalog;
 namespace WidgetWorks.Application.Abstractions;
 
 /// <summary>Filter/paging criteria for catalog listing and search.</summary>
-public sealed record WidgetQuery(string? Search, bool ActiveOnly, int Page, int PageSize)
+/// <summary>
+/// A catalogue listing request. Search and Category are independent narrowings combined with AND,
+/// so "turbine" within Mega means both, not either.
+/// </summary>
+/// <param name="Sort">
+/// One of <see cref="WidgetSort"/>. Never interpolated into SQL - the repository maps it through a
+/// fixed set of order-by clauses, so an unrecognised value falls back to the default rather than
+/// reaching the database.
+/// </param>
+public sealed record WidgetQuery(
+    string? Search,
+    bool ActiveOnly,
+    int Page,
+    int PageSize,
+    string? Category = null,
+    string? Sort = null)
 {
     public int Offset => (Math.Max(1, Page) - 1) * PageSize;
+}
+
+/// <summary>The orderings the catalogue offers. Values are part of the API contract.</summary>
+public static class WidgetSort
+{
+    public const string Featured = "featured";
+    public const string PriceAscending = "price-asc";
+    public const string PriceDescending = "price-desc";
+    public const string Name = "name";
 }
 
 public interface IWidgetRepository

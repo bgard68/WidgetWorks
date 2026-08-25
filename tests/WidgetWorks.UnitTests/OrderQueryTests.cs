@@ -316,7 +316,7 @@ public class OrderQueryTests
     public async Task Get_cart_prices_the_lines()
     {
         var c = CartSetup();
-        var result = await new GetCartHandler(c.Carts, c.Widgets).Handle(new GetCartQuery(c.Cart.Id), CancellationToken.None);
+        var result = await new GetCartHandler(c.Carts, c.Widgets).Handle(new GetCartQuery(c.Cart.Id, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.ItemCount);
@@ -327,7 +327,7 @@ public class OrderQueryTests
     public async Task Get_cart_fails_for_an_unknown_cart()
     {
         var c = CartSetup();
-        var result = await new GetCartHandler(c.Carts, c.Widgets).Handle(new GetCartQuery(Guid.NewGuid()), CancellationToken.None);
+        var result = await new GetCartHandler(c.Carts, c.Widgets).Handle(new GetCartQuery(Guid.NewGuid(), null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Cart not found.", result.Error);
@@ -340,7 +340,7 @@ public class OrderQueryTests
         var clock = new FakeTimeProvider(Now.AddHours(1));
 
         var result = await new RemoveCartItemHandler(c.Carts, c.Widgets, clock)
-            .Handle(new RemoveCartItemCommand(c.Cart.Id, c.Widget.Id), CancellationToken.None);
+            .Handle(new RemoveCartItemCommand(c.Cart.Id, c.Widget.Id, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, result.Value!.ItemCount);
@@ -354,7 +354,7 @@ public class OrderQueryTests
         var c = CartSetup();
 
         var result = await new RemoveCartItemHandler(c.Carts, c.Widgets, new FakeTimeProvider(Now))
-            .Handle(new RemoveCartItemCommand(c.Cart.Id, Guid.NewGuid()), CancellationToken.None);
+            .Handle(new RemoveCartItemCommand(c.Cart.Id, Guid.NewGuid(), null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.ItemCount);
@@ -366,7 +366,7 @@ public class OrderQueryTests
         var c = CartSetup();
 
         var result = await new RemoveCartItemHandler(c.Carts, c.Widgets, new FakeTimeProvider(Now))
-            .Handle(new RemoveCartItemCommand(Guid.NewGuid(), c.Widget.Id), CancellationToken.None);
+            .Handle(new RemoveCartItemCommand(Guid.NewGuid(), c.Widget.Id, null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Cart not found.", result.Error);

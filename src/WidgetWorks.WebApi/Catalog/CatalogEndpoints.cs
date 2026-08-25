@@ -16,9 +16,9 @@ public static class CatalogEndpoints
         // Public storefront: active widgets only.
         var catalog = routes.MapGroup("/catalog");
 
-        catalog.MapGet("/widgets", async (string? search, int? page, int? pageSize, BrowseWidgetsHandler handler, CancellationToken ct) =>
+        catalog.MapGet("/widgets", async (string? search, string? category, string? sort, int? page, int? pageSize, BrowseWidgetsHandler handler, CancellationToken ct) =>
         {
-            var result = await handler.Handle(new BrowseWidgetsQuery(search, IncludeInactive: false, page ?? 1, pageSize ?? 20), ct);
+            var result = await handler.Handle(new BrowseWidgetsQuery(search, IncludeInactive: false, page ?? 1, pageSize ?? 20, category, sort), ct);
             return Results.Ok(result);
         });
 

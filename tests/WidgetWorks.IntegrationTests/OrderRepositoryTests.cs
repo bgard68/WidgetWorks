@@ -235,11 +235,69 @@ public class OrderRepositoryTests(PostgresFixture db)
         await Orders.TryPlaceAsync(order, CancellationToken.None);
         await Orders.MarkPaidAsync(order.Id, "Mock", "r", Now, CancellationToken.None);
 
-        await Orders.UpdateStatusAsync(order.Id, OrderStatus.Shipped, "1Z-TRACK", Now.AddHours(1), CancellationToken.None);
+        // Set directly rather than via TransitionTo: MarkPaidAsync moved the row, not this
+        // in-memory instance, so the entity would refuse Pending -> Shipped.
+        order.Status = OrderStatus.Shipped;
+        order.TrackingNumber = "1Z-TRACK";
+        await Orders.UpdateStatusAsync(order, Now.AddHours(1), CancellationToken.None);
 
         var stored = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
         Assert.Equal(OrderStatus.Shipped, stored!.Status);
         Assert.Equal("1Z-TRACK", stored.TrackingNumber);
+    }
+
+    [Fact]
+    public async Task Shipping_turns_the_reservation_into_a_real_decrement()
+    {
+        var widget = await GivenWidget(onHand: 5);
+        var order = OrderFor(widget, 2);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+
+        var reserved = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(5, reserved!.QuantityOnHand);
+        Assert.Equal(2, reserved.QuantityReserved);
+
+        order.Status = OrderStatus.Shipped;
+        await Orders.UpdateStatusAsync(order, Now.AddHours(1), CancellationToken.None);
+
+        // The goods left the shelf: on-hand falls and the hold is gone, so availability
+        // (on_hand - reserved) is unchanged at 3 while on-hand now tells the truth.
+        var shipped = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(3, shipped!.QuantityOnHand);
+        Assert.Equal(0, shipped.QuantityReserved);
+    }
+
+    [Fact]
+    public async Task Cancelling_hands_the_reservation_back()
+    {
+        var widget = await GivenWidget(onHand: 5);
+        var order = OrderFor(widget, 2);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+
+        order.Status = OrderStatus.Cancelled;
+        await Orders.UpdateStatusAsync(order, Now.AddHours(1), CancellationToken.None);
+
+        // Nothing shipped, so the stock returns to sale in full.
+        var cancelled = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(5, cancelled!.QuantityOnHand);
+        Assert.Equal(0, cancelled.QuantityReserved);
+    }
+
+    [Fact]
+    public async Task Delivery_moves_no_stock_because_shipping_already_did()
+    {
+        var widget = await GivenWidget(onHand: 5);
+        var order = OrderFor(widget, 2);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+
+        order.Status = OrderStatus.Shipped;
+        await Orders.UpdateStatusAsync(order, Now.AddHours(1), CancellationToken.None);
+        order.Status = OrderStatus.Delivered;
+        await Orders.UpdateStatusAsync(order, Now.AddHours(2), CancellationToken.None);
+
+        var delivered = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(3, delivered!.QuantityOnHand);
+        Assert.Equal(0, delivered.QuantityReserved);
     }
 
     [Fact]

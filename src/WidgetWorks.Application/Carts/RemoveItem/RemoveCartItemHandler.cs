@@ -1,9 +1,10 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Common;
+using WidgetWorks.Application.Carts;
 
 namespace WidgetWorks.Application.Carts.RemoveItem;
 
-public sealed record RemoveCartItemCommand(Guid CartId, Guid WidgetId);
+public sealed record RemoveCartItemCommand(Guid CartId, Guid WidgetId, Guid? RequestedBy);
 
 public sealed class RemoveCartItemHandler(ICartRepository carts, IWidgetRepository widgets, TimeProvider clock)
 {
@@ -12,6 +13,13 @@ public sealed class RemoveCartItemHandler(ICartRepository carts, IWidgetReposito
         var cart = await carts.GetAsync(command.CartId, ct);
         if (cart is null)
         {
+            return Result<CartView>.Fail("Cart not found.");
+        }
+
+        if (!CartAccess.IsPermitted(cart, command.RequestedBy))
+        {
+            // Deliberately the same answer as a missing cart: telling an unauthorized caller that
+            // the cart exists would confirm a guess.
             return Result<CartView>.Fail("Cart not found.");
         }
 

@@ -1,14 +1,11 @@
 // Storefront browsing vocabulary, shared by the header scope select, the
 // category rail and the catalog grid so all three stay in step.
 //
-// The API searches free text (`?search=`) and pages server-side. Category and
-// sort are refinements applied to the returned page in the browser: the store
-// asks for a full page (PAGE_SIZE, the API's 100 cap) and narrows it here,
-// which keeps the three controls composable without new endpoints. The demo
-// catalog is 75 widgets, so one page still holds all of it - a catalog past
-// PAGE_SIZE would drop its tail out of every category shelf.
-import type { WidgetView } from '../api/types'
-
+// Search, category and sort are all applied by the API. They used to be
+// narrowed here over a single fetched page, which meant a catalog larger than
+// PAGE_SIZE lost its tail from every shelf and a sort only ordered whatever
+// happened to be on that page. PAGE_SIZE is now just how many results one
+// request asks for; growing past it needs a pager, not a bigger number.
 export const PAGE_SIZE = 100
 
 export interface Category {
@@ -41,37 +38,6 @@ export type SortValue = (typeof SORTS)[number]['value']
 
 export function categoryBySlug(slug: string): Category | undefined {
   return CATEGORIES.find((c) => c.slug === slug && c.slug !== '')
-}
-
-function matchesCategory(w: WidgetView, keyword: string): boolean {
-  if (!keyword) return true
-  const needle = keyword.toLowerCase()
-  return (
-    w.name.toLowerCase().includes(needle) ||
-    w.sku.toLowerCase().includes(needle) ||
-    w.description.toLowerCase().includes(needle)
-  )
-}
-
-/** Narrow to a category, then order — pure, so the grid can call it on render. */
-export function refine(items: WidgetView[], catSlug: string, sort: string): WidgetView[] {
-  const keyword = categoryBySlug(catSlug)?.keyword ?? ''
-  const filtered = keyword ? items.filter((w) => matchesCategory(w, keyword)) : items.slice()
-
-  switch (sort) {
-    case 'price-asc':
-      return filtered.sort((a, b) => a.price - b.price)
-    case 'price-desc':
-      return filtered.sort((a, b) => b.price - a.price)
-    case 'name':
-      return filtered.sort((a, b) => a.name.localeCompare(b.name))
-    default:
-      // "Featured" keeps the order the API returned, with anything out of
-      // stock pushed to the end so the grid leads with what can be bought.
-      return filtered.sort(
-        (a, b) => Number(b.quantityAvailable > 0) - Number(a.quantityAvailable > 0),
-      )
-  }
 }
 
 /** Free-shipping threshold quoted in the header strip and cart nudge. */

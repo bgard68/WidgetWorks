@@ -38,7 +38,14 @@ public sealed class ConfirmPaymentHandler(
 
         if (command.Type == PaymentEventType.Succeeded)
         {
-            await orders.MarkPaidAsync(order.Id, order.PaymentProvider ?? command.Provider, command.Reference, now, ct);
+            // The status check above is a courtesy; this is the decision. Two deliveries of the
+            // same event both pass that check, and the database picks exactly one winner. Only the
+            // winner sends a receipt, so a retried webhook cannot email the customer twice.
+            if (!await orders.MarkPaidAsync(order.Id, order.PaymentProvider ?? command.Provider, command.Reference, now, ct))
+            {
+                return Result<string>.Success(order.Status);
+            }
+
             order.Status = OrderStatus.Paid;
 
             try
@@ -58,7 +65,13 @@ public sealed class ConfirmPaymentHandler(
             return Result<string>.Success(OrderStatus.Paid);
         }
 
-        await orders.MarkPaymentFailedAsync(order, "Payment failed.", now, ct);
+        // Same contract on the failure path, and it matters more here: the losing caller must not
+        // release the reservation a second time.
+        if (!await orders.MarkPaymentFailedAsync(order, "Payment failed.", now, ct))
+        {
+            return Result<string>.Success(order.Status);
+        }
+
         order.Status = OrderStatus.PaymentFailed;
         return Result<string>.Success(OrderStatus.PaymentFailed);
     }

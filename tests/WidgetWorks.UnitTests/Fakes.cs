@@ -199,29 +199,47 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         return Task.FromResult(true);
     }
 
-    public Task MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    public Task<bool> MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
     {
         var order = Orders.First(o => o.Id == orderId);
+        if (order.Status != OrderStatus.Pending)
+        {
+            return Task.FromResult(false);
+        }
+
         order.Status = OrderStatus.AwaitingPayment;
         order.PaymentProvider = provider;
         order.PaymentReference = reference;
         order.UpdatedAt = now;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
-    public Task MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    public Task<bool> MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
     {
         var order = Orders.First(o => o.Id == orderId);
+        if (!AwaitingSettlement(order.Status))
+        {
+            return Task.FromResult(false);
+        }
+
         order.Status = OrderStatus.Paid;
         order.PaymentProvider = provider;
         order.PaymentReference = reference;
         order.UpdatedAt = now;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
-    public Task MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct)
+    public Task<bool> MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct)
     {
         var stored = Orders.First(o => o.Id == order.Id);
+
+        // Mirrors the repository's compare-and-set: a second delivery of the same failure is
+        // declined, so the reservation is released exactly once.
+        if (!AwaitingSettlement(stored.Status))
+        {
+            return Task.FromResult(false);
+        }
+
         stored.Status = OrderStatus.PaymentFailed;
         stored.UpdatedAt = now;
         foreach (var item in order.Items)
@@ -232,8 +250,11 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
             }
         }
 
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
+
+    private static bool AwaitingSettlement(string status)
+        => status is OrderStatus.Pending or OrderStatus.AwaitingPayment;
 
     public Task UpdateStatusAsync(Order order, DateTimeOffset now, CancellationToken ct)
     {
@@ -264,6 +285,13 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
 
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<Order>> GetStaleAwaitingPaymentAsync(DateTimeOffset cutoff, int limit, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<Order>>(Orders
+            .Where(o => o.Status == OrderStatus.AwaitingPayment && o.UpdatedAt < cutoff)
+            .OrderBy(o => o.UpdatedAt)
+            .Take(limit)
+            .ToList());
 
     public Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
         => Task.FromResult(Orders.FirstOrDefault(o => o.Id == id));

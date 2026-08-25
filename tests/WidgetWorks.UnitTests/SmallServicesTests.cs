@@ -162,7 +162,7 @@ public class SmallServicesTests
     {
         var c = Setup();
 
-        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 0), CancellationToken.None);
+        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 0, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!.Items);
@@ -173,7 +173,7 @@ public class SmallServicesTests
     {
         var c = Setup();
 
-        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, -3), CancellationToken.None);
+        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, -3, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!.Items);
@@ -184,7 +184,7 @@ public class SmallServicesTests
     {
         var c = Setup(available: 5);
 
-        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 99), CancellationToken.None);
+        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 99, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(5, result.Value!.Items.Single().Quantity);
@@ -195,7 +195,7 @@ public class SmallServicesTests
     {
         var c = Setup(available: 0);
 
-        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 1), CancellationToken.None);
+        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 1, null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("This widget is out of stock.", result.Error);
@@ -206,7 +206,7 @@ public class SmallServicesTests
     {
         var c = Setup(active: false);
 
-        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 1), CancellationToken.None);
+        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 1, null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Widget not found.", result.Error);
@@ -217,7 +217,7 @@ public class SmallServicesTests
     {
         var c = Setup();
 
-        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, Guid.NewGuid(), 1), CancellationToken.None);
+        var result = await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, Guid.NewGuid(), 1, null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Widget not found.", result.Error);
@@ -228,7 +228,7 @@ public class SmallServicesTests
     {
         var c = Setup();
 
-        var result = await Handler(c).Handle(new UpdateCartItemCommand(Guid.NewGuid(), c.Widget.Id, 1), CancellationToken.None);
+        var result = await Handler(c).Handle(new UpdateCartItemCommand(Guid.NewGuid(), c.Widget.Id, 1, null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Cart not found.", result.Error);
@@ -239,7 +239,7 @@ public class SmallServicesTests
     {
         var c = Setup();
 
-        await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 3), CancellationToken.None);
+        await Handler(c).Handle(new UpdateCartItemCommand(c.Cart.Id, c.Widget.Id, 3, null), CancellationToken.None);
 
         Assert.Equal(Now, c.Carts.Store[c.Cart.Id].UpdatedAt);
     }

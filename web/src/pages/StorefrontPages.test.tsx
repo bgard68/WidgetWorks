@@ -88,11 +88,12 @@ describe('CatalogPage', () => {
   })
 
   it('counts what is shown, in the singular when only one matched', async () => {
-    stubFetch([['/catalog/widgets', paged()]])
+    // The API returns the narrowed set now, so the fixture is the answer to
+    // ?category=mega rather than something the page filters afterwards.
+    stubFetch([['/catalog/widgets', paged([soldOut])]])
 
     renderWithProviders(<CatalogPage />, { at: '/store?cat=mega', path: '/store' })
 
-    // One of the two loaded widgets matches "mega".
     expect(await screen.findByText('1 product')).toBeInTheDocument()
   })
 
@@ -101,13 +102,13 @@ describe('CatalogPage', () => {
 
     renderWithProviders(<CatalogPage />, { at: '/store', path: '/store' })
 
-    // Category and sort refine the page in the browser; the count must not pretend the
-    // catalog is only as big as the page.
+    // The grid shows one page; the count must not pretend the catalog is only
+    // as big as that page.
     expect(await screen.findByText('2 products of 40')).toBeInTheDocument()
   })
 
-  it('sorting re-orders the grid in place', async () => {
-    stubFetch([['/catalog/widgets', paged()]])
+  it('asks the API to re-order rather than sorting the page it already has', async () => {
+    const calls = stubFetch([['/catalog/widgets', paged()]])
     const user = userEvent.setup()
 
     renderWithProviders(<CatalogPage />, { at: '/store', path: '/store' })
@@ -115,10 +116,19 @@ describe('CatalogPage', () => {
 
     await user.selectOptions(screen.getByLabelText('Sort by'), 'price-desc')
 
-    await waitFor(() => {
-      const titles = screen.getAllByRole('link', { name: /Widget$/ }).map((el) => el.textContent)
-      expect(titles).toEqual(['Mega Widget', 'Standard Widget'])   // 99 before 12.50
-    })
+    // Sorting in the browser would only order whatever happened to be on this
+    // page. The request carries the choice so the ordering applies to the whole
+    // matching set.
+    await waitFor(() => expect(calls.some((c) => c.url.includes('sort=price-desc'))).toBe(true))
+  })
+
+  it('narrows a category through the API, not in the browser', async () => {
+    const calls = stubFetch([['/catalog/widgets', paged()]])
+
+    renderWithProviders(<CatalogPage />, { at: '/store?cat=mega', path: '/store' })
+    await screen.findByRole('heading', { name: 'Mega widgets' })
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('category=mega'))).toBe(true))
   })
 
   it('clears a category from the toolbar', async () => {

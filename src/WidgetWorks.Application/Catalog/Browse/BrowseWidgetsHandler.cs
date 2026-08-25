@@ -2,7 +2,13 @@ using WidgetWorks.Application.Abstractions;
 
 namespace WidgetWorks.Application.Catalog.Browse;
 
-public sealed record BrowseWidgetsQuery(string? Search, bool IncludeInactive, int Page, int PageSize);
+public sealed record BrowseWidgetsQuery(
+    string? Search,
+    bool IncludeInactive,
+    int Page,
+    int PageSize,
+    string? Category = null,
+    string? Sort = null);
 
 public sealed class BrowseWidgetsHandler(IWidgetRepository widgets)
 {
@@ -18,7 +24,9 @@ public sealed class BrowseWidgetsHandler(IWidgetRepository widgets)
             string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim(),
             ActiveOnly: !query.IncludeInactive,
             page,
-            size);
+            size,
+            Category: string.IsNullOrWhiteSpace(query.Category) ? null : query.Category.Trim(),
+            Sort: query.Sort);
 
         var items = await widgets.SearchAsync(repoQuery, ct);
         var total = await widgets.CountAsync(repoQuery, ct);

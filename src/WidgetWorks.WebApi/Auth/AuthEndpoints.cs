@@ -6,6 +6,7 @@ using WidgetWorks.Application.Auth.Refresh;
 using WidgetWorks.Application.Auth.Register;
 using WidgetWorks.Application.TwoFactor.Challenge;
 using WidgetWorks.Application.TwoFactor.Recovery;
+using WidgetWorks.WebApi.RateLimiting;
 
 namespace WidgetWorks.WebApi.Auth;
 
@@ -23,7 +24,7 @@ public static class AuthEndpoints
 {
     public static void MapAuthEndpoints(this IEndpointRouteBuilder routes)
     {
-        var group = routes.MapGroup("/auth");
+        var group = routes.MapGroup("/auth").RequireRateLimiting(RateLimitPolicies.Auth);
 
         group.MapPost("/register", async (RegisterCommand command, RegisterHandler handler, CancellationToken ct) =>
         {

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Checkout.PlaceOrder;
 using WidgetWorks.Application.Checkout.Quote;
+using WidgetWorks.WebApi.RateLimiting;
 
 namespace WidgetWorks.WebApi.Checkout;
 
@@ -21,7 +22,7 @@ public static class CheckoutEndpoints
                 body.PaymentToken);
             var result = await handler.Handle(command, ct);
             return result.IsSuccess ? Results.Ok(result.Value) : Results.BadRequest(new { error = result.Error });
-        });
+        }).RequireRateLimiting(RateLimitPolicies.Checkout);
 
         var group = routes.MapGroup("/checkout");
 

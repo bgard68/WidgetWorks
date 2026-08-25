@@ -65,8 +65,10 @@ public sealed class CheckoutHandler(
         }
 
         var cart = await carts.GetAsync(command.CartId, ct);
-        if (cart is null)
+        if (cart is null || !CartAccess.IsPermitted(cart, command.UserId))
         {
+            // One answer for "no such cart" and "not yours": checking out someone else's basket
+            // would otherwise disclose its contents in the resulting order.
             return Fail("Cart not found.");
         }
 

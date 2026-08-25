@@ -17,6 +17,7 @@ using WidgetWorks.WebApi.Checkout;
 using WidgetWorks.WebApi.Orders;
 using WidgetWorks.WebApi.Payments;
 using WidgetWorks.WebApi.Security;
+using WidgetWorks.WebApi.RateLimiting;
 using WidgetWorks.WebApi.TwoFactor;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +25,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddOpenApi();
+builder.Services.AddWidgetWorksRateLimiting(builder.Configuration);
 
 // CORS for the browser SPA (origins from config; sensible localhost defaults for dev).
 const string SpaCorsPolicy = "spa";
@@ -120,6 +122,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors(SpaCorsPolicy);
+
+// Ahead of authentication on purpose: a throttled request is rejected before the app spends
+// work validating credentials, which is what keeps a guessing flood cheap to absorb.
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

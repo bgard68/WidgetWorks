@@ -29,7 +29,8 @@ Then open:
 | Store (SPA) | http://localhost:3000/store |
 | **Mailpit** — every email the app sends | http://localhost:8025 |
 | API + Scalar (interactive API UI) | http://localhost:8080/scalar/v1 |
-| Health | http://localhost:8080/health |
+| Health (liveness — no database) | http://localhost:8080/health |
+| Readiness (queries the database) | http://localhost:8080/health/ready |
 
 The landing page at `/` explains the demo, states that no payment is ever taken, and lists
 the accounts below with what each role can do — it's the same guide, in the app.
@@ -109,4 +110,5 @@ values and why.
   [Configuration](04-configuration-and-2fa.md#reading-real-mail-locally-mailpit).
 - **API up but every request 503** — the database was unreachable at startup, so migrations
   were skipped and the app is running degraded on purpose rather than restart-looping.
-  `/health` says so; fix the connection and restart the API.
+  `/health` says so; fix the connection and restart the API. Once running, `/health/ready`
+  is the one that keeps checking — `/health` only reports how startup went.

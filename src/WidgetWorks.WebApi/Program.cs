@@ -18,6 +18,7 @@ using WidgetWorks.WebApi.Orders;
 using WidgetWorks.WebApi.Payments;
 using WidgetWorks.WebApi.Security;
 using WidgetWorks.Application.Checkout.ReleaseStale;
+using WidgetWorks.WebApi.Diagnostics;
 using WidgetWorks.WebApi.Hosting;
 using WidgetWorks.WebApi.RateLimiting;
 using WidgetWorks.WebApi.TwoFactor;
@@ -28,6 +29,7 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddOpenApi();
 builder.Services.AddWidgetWorksRateLimiting(builder.Configuration);
+builder.Services.AddSingleton<ProxyConfigurationCheck>();
 
 // Stock held by an order whose payment never settles is returned to sale on a timer. Options are
 // bound here so the sweep can be retuned, or turned off for a host that should not run background
@@ -136,7 +138,19 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();   // interactive API UI at /scalar/v1
 }
 
+// First, so it wraps every other piece of middleware: anything that throws below this point
+// becomes a correlated 500 rather than an empty one.
+app.UseWidgetWorksExceptionHandler();
+
 app.UseCors(SpaCorsPolicy);
+
+// Watches real traffic for the proxy misconfiguration that would otherwise turn per-caller
+// throttling into a global cap without anything saying so.
+app.Use(async (context, next) =>
+{
+    context.RequestServices.GetRequiredService<ProxyConfigurationCheck>().Inspect(context);
+    await next(context);
+});
 
 // Ahead of authentication on purpose: a throttled request is rejected before the app spends
 // work validating credentials, which is what keeps a guessing flood cheap to absorb.
@@ -144,13 +158,9 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 200 only when the database is actually usable. A 503 naming the failure is what turns a silent
-// restart loop into a one-line diagnosis.
-app.MapGet("/health", (TimeProvider clock) => migration.Successful
-    ? Results.Ok(new { status = "ok", utcNow = clock.GetUtcNow() })
-    : Results.Json(
-        new { status = "unhealthy", reason = "database migration failed", detail = migration.Error, utcNow = clock.GetUtcNow() },
-        statusCode: StatusCodes.Status503ServiceUnavailable));
+// Liveness at /health (cheap, no database — the keep-warm schedule pings it) and readiness at
+// /health/ready (queries the database, for platform probes and alerting).
+app.MapHealthEndpoints(migration.Successful, migration.Error);
 app.MapAuthEndpoints();
 app.MapSecurityEndpoints();
 app.MapTwoFactorEndpoints();

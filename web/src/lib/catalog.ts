@@ -3,11 +3,13 @@
 //
 // The API searches free text (`?search=`) and pages server-side. Category and
 // sort are refinements applied to the returned page in the browser: the store
-// asks for a full page (PAGE_SIZE, under the API's 100 cap) and narrows it
-// here, which keeps the three controls composable without new endpoints.
+// asks for a full page (PAGE_SIZE, the API's 100 cap) and narrows it here,
+// which keeps the three controls composable without new endpoints. The demo
+// catalog is 75 widgets, so one page still holds all of it - a catalog past
+// PAGE_SIZE would drop its tail out of every category shelf.
 import type { WidgetView } from '../api/types'
 
-export const PAGE_SIZE = 60
+export const PAGE_SIZE = 100
 
 export interface Category {
   /** URL value for the `cat` search param — empty means "everything". */

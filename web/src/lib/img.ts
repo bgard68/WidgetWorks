@@ -4,7 +4,7 @@
 // renders offline. Real product images set on the widget (admin) take
 // precedence; SKUs without bespoke art share a generic widget illustration.
 const ILLUSTRATED = /^ww-(\d{3})$/
-const ILLUSTRATED_COUNT = 25
+const ILLUSTRATED_COUNT = 75
 
 export function productImage(w: { sku: string; imageUrl?: string | null }): string {
   if (w.imageUrl && w.imageUrl.trim()) return w.imageUrl

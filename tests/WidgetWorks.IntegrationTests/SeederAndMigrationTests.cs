@@ -107,13 +107,15 @@ public class SeederAndMigrationTests(PostgresFixture db)
         await Seeder.SeedAsync(Options(Guid.NewGuid().ToString("N")[..8]), CancellationToken.None);
 
         var standard = await widgets.GetBySkuAsync("WW-001", CancellationToken.None);
-        Assert.Equal("Standard Widget", standard!.Name);
+        Assert.Equal("Standard Widget Block", standard!.Name);
         Assert.Equal(9.99m, standard.Price);
 
         await Seeder.SeedAsync(Options(Guid.NewGuid().ToString("N")[..8]), CancellationToken.None);
 
-        // Still one row per SKU after a second run.
-        Assert.Equal(1, await widgets.CountAsync(new WidgetQuery("Standard Widget", true, 1, 50), CancellationToken.None));
+        // Still one row per SKU after a second run. The search has to name a whole
+        // product: each department seeds five widgets, so "Standard Widget" on its own
+        // now matches all five of them.
+        Assert.Equal(1, await widgets.CountAsync(new WidgetQuery("Standard Widget Block", true, 1, 50), CancellationToken.None));
     }
 
     [Fact]

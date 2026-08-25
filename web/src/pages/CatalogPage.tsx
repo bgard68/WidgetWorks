@@ -48,6 +48,9 @@ export function CatalogPage() {
   const q = params.get('q') ?? ''
   const cat = params.get('cat') ?? ''
   const sort = params.get('sort') ?? 'featured'
+  // Paging lives in the URL like every other part of the query, so a shelf can be
+  // linked, bookmarked and reached with the back button.
+  const page = Math.max(1, Number(params.get('page') ?? '1') || 1)
 
   const [data, setData] = useState<Paged<WidgetView> | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +59,7 @@ export function CatalogPage() {
   useEffect(() => {
     let active = true
     setLoading(true)
-    const sp = new URLSearchParams({ pageSize: String(PAGE_SIZE) })
+    const sp = new URLSearchParams({ pageSize: String(PAGE_SIZE), page: String(page) })
     if (q.trim()) sp.set('search', q.trim())
     // Category and sort are the server's job. Narrowing a single fetched page in the browser
     // silently dropped anything past that page from a shelf, and sorted only what happened to be
@@ -69,7 +72,7 @@ export function CatalogPage() {
       .catch((e) => { if (active) setError(e.message) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [q, cat, sort])
+  }, [q, cat, sort, page])
 
   const items = data?.items ?? []
 
@@ -83,6 +86,9 @@ export function CatalogPage() {
     const next = new URLSearchParams(params)
     if (value) next.set(key, value)
     else next.delete(key)
+    // Any change to what is being asked for starts again at the first page. Keeping the old
+    // page number would strand a reader on page 4 of a result that now has two.
+    if (key !== 'page') next.delete('page')
     setParams(next, { replace: true })
   }
 
@@ -142,8 +148,8 @@ export function CatalogPage() {
             {loading
               ? 'Loading products…'
               : `${items.length} ${items.length === 1 ? 'product' : 'products'}${
-                data && items.length < data.totalCount ? ` of ${data.totalCount}` : ''
-              }`}
+                data && data.totalCount > items.length ? ` of ${data.totalCount}` : ''
+              }${data && data.totalPages > 1 ? ` · page ${data.page} of ${data.totalPages}` : ''}`}
           </div>
         </div>
 
@@ -168,6 +174,30 @@ export function CatalogPage() {
         <div className="grid">
           {items.map((w) => <ProductCard key={w.id} widget={w} />)}
         </div>
+      )}
+
+      {!loading && !error && data && data.totalPages > 1 && (
+        <nav className="pager" aria-label="Pagination">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={data.page <= 1}
+            onClick={() => setParam('page', String(data.page - 1))}
+          >
+            ← Previous
+          </button>
+          <span className="pager-at" aria-live="polite">
+            Page {data.page} of {data.totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={data.page >= data.totalPages}
+            onClick={() => setParam('page', String(data.page + 1))}
+          >
+            Next →
+          </button>
+        </nav>
       )}
 
       {!loading && !error && items.length === 0 && (

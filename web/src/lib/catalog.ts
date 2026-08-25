@@ -1,12 +1,16 @@
 // Storefront browsing vocabulary, shared by the header scope select, the
 // category rail and the catalog grid so all three stay in step.
 //
-// Search, category and sort are all applied by the API. They used to be
-// narrowed here over a single fetched page, which meant a catalog larger than
-// PAGE_SIZE lost its tail from every shelf and a sort only ordered whatever
-// happened to be on that page. PAGE_SIZE is now just how many results one
-// request asks for; growing past it needs a pager, not a bigger number.
-export const PAGE_SIZE = 100
+// Search, category and sort are all applied by the API, and results are paged.
+// They were once narrowed here over a single fetched page, so a catalog larger
+// than PAGE_SIZE lost its tail from every shelf and a sort ordered only what
+// happened to be on it. Both are the server's job now, and the grid pages
+// through the result rather than hoping it fits in one response.
+// One screenful, not "everything we can get away with". Before the grid could
+// page, this had to be large enough to hold the whole catalog or products fell
+// off the end silently; now it is an ordinary page size and the catalog can be
+// any size at all.
+export const PAGE_SIZE = 24
 
 export interface Category {
   /** URL value for the `cat` search param — empty means "everything". */

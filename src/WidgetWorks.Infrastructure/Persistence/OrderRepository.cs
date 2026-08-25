@@ -24,6 +24,22 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         @"update widgets set quantity_reserved = quantity_reserved + @Quantity, updated_at = @Now
           where id = @WidgetId and (quantity_on_hand - quantity_reserved) >= @Quantity";
 
+    /// <summary>Hands a reservation back: the goods never left, so only the hold is undone.</summary>
+    private const string ReleaseSql =
+        @"update widgets set quantity_reserved = quantity_reserved - @Quantity, updated_at = @Now
+          where id = @WidgetId and quantity_reserved >= @Quantity";
+
+    /// <summary>
+    /// Turns a reservation into a real decrement when the parcel leaves. Both columns fall by the
+    /// same amount, so availability (on_hand - reserved) is unchanged and the on-hand figure starts
+    /// telling the truth about what is on the shelf. The guards keep either column off negative.
+    /// </summary>
+    private const string ShipSql =
+        @"update widgets set quantity_on_hand = quantity_on_hand - @Quantity,
+                             quantity_reserved = quantity_reserved - @Quantity,
+                             updated_at = @Now
+          where id = @WidgetId and quantity_reserved >= @Quantity and quantity_on_hand >= @Quantity";
+
     public async Task<bool> TryPlaceAsync(Order order, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
@@ -88,8 +104,7 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
             foreach (var item in order.Items)
             {
                 await db.ExecuteAsync(new CommandDefinition(
-                    "update widgets set quantity_reserved = quantity_reserved - @Quantity, updated_at = @Now where id = @WidgetId and quantity_reserved >= @Quantity",
-                    new { item.WidgetId, item.Quantity, Now = now }, tx, cancellationToken: ct));
+                    ReleaseSql, new { item.WidgetId, item.Quantity, Now = now }, tx, cancellationToken: ct));
             }
 
             tx.Commit();
@@ -101,12 +116,47 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         }
     }
 
-    public async Task UpdateStatusAsync(Guid orderId, string status, string? trackingNumber, DateTimeOffset now, CancellationToken ct)
+    public async Task UpdateStatusAsync(Order order, DateTimeOffset now, CancellationToken ct)
     {
+        // Status and stock move together or not at all. Splitting them would let a crash between
+        // the two leave a shipped order whose goods are still reserved, which is exactly the drift
+        // this method exists to stop.
         using var db = await factory.OpenAsync(ct);
-        await db.ExecuteAsync(
-            "update orders set status = @Status, tracking_number = @Tracking, updated_at = @Now where id = @Id",
-            new { Id = orderId, Status = status, Tracking = trackingNumber, Now = now });
+        using var tx = db.BeginTransaction();
+        try
+        {
+            await db.ExecuteAsync(new CommandDefinition(
+                "update orders set status = @Status, tracking_number = @Tracking, updated_at = @Now where id = @Id",
+                new { Id = order.Id, Status = order.Status, Tracking = order.TrackingNumber, Now = now },
+                tx, cancellationToken: ct));
+
+            // Shipping turns a reservation into a real decrement; cancelling hands it back.
+            // Delivered moves no stock - shipping already did.
+            // Explicit string? rather than var: a switch expression mixing string arms with a
+            // null arm has no best common type to infer.
+            string? sql = order.Status switch
+            {
+                OrderStatus.Shipped => ShipSql,
+                OrderStatus.Cancelled => ReleaseSql,
+                _ => null,
+            };
+
+            if (sql is not null)
+            {
+                foreach (var item in order.Items)
+                {
+                    await db.ExecuteAsync(new CommandDefinition(
+                        sql, new { item.WidgetId, item.Quantity, Now = now }, tx, cancellationToken: ct));
+                }
+            }
+
+            tx.Commit();
+        }
+        catch
+        {
+            tx.Rollback();
+            throw;
+        }
     }
 
     public async Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)

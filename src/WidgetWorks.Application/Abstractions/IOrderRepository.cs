@@ -15,7 +15,13 @@ public interface IOrderRepository
     /// <summary>Marks the order failed and releases its inventory reservations.</summary>
     Task MarkPaymentFailedAsync(Order order, string reason, DateTimeOffset now, CancellationToken ct);
 
-    Task UpdateStatusAsync(Guid orderId, string status, string? trackingNumber, DateTimeOffset now, CancellationToken ct);
+    /// <summary>
+    /// Persists a fulfilment transition together with the inventory movement it implies, in one
+    /// transaction: shipping converts the reservation into a real stock decrement, cancelling
+    /// releases it back. Pass the order after <see cref="Order.TransitionTo"/> has run - the new
+    /// status on it decides the movement.
+    /// </summary>
+    Task UpdateStatusAsync(Order order, DateTimeOffset now, CancellationToken ct);
 
     Task<Order?> GetByIdAsync(Guid id, CancellationToken ct);
 

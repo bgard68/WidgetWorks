@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Orders.UpdateStatus;
+using WidgetWorks.Domain.Catalog;
 using WidgetWorks.Domain.Orders;
 using WidgetWorks.UnitTests.Fakes;
 using Xunit;
@@ -20,6 +21,61 @@ public class OrderLifecycleTests
         order.Items.Add(new OrderItem { Id = Guid.NewGuid(), WidgetId = Guid.NewGuid(), Sku = "WW-1", Name = "Gizmo", UnitPrice = 10m, Quantity = 1, LineSubtotal = 10m });
         orders.Orders.Add(order);
         return (orders, new FakeEmailSender(), order);
+    }
+
+    /// <summary>
+    /// As <see cref="Setup"/>, but the widget is really in stock with the order's units held,
+    /// so a transition's effect on inventory is observable.
+    /// </summary>
+    private static (InMemoryOrderRepository Orders, InMemoryWidgetRepository Widgets, Order Order, Guid WidgetId) StockedSetup(int onHand = 5, int quantity = 2)
+    {
+        var widgets = new InMemoryWidgetRepository();
+        var orders = new InMemoryOrderRepository(widgets);
+        var widgetId = Guid.NewGuid();
+        widgets.Store[widgetId] = new Widget
+        {
+            Id = widgetId,
+            Sku = "WW-1",
+            Name = "Gizmo",
+            Price = 10m,
+            IsActive = true,
+            QuantityOnHand = onHand,
+            QuantityReserved = quantity,
+        };
+
+        var order = new Order { Id = Guid.NewGuid(), OrderNumber = "WW-1", Email = "jane@example.com", Status = OrderStatus.Paid, Total = 10m };
+        order.Items.Add(new OrderItem { Id = Guid.NewGuid(), WidgetId = widgetId, Sku = "WW-1", Name = "Gizmo", UnitPrice = 10m, Quantity = quantity, LineSubtotal = 10m });
+        orders.Orders.Add(order);
+        return (orders, widgets, order, widgetId);
+    }
+
+    [Fact]
+    public async Task Shipping_converts_the_reservation_into_a_stock_decrement()
+    {
+        var (orders, widgets, order, widgetId) = StockedSetup();
+        var handler = new UpdateOrderStatusHandler(orders, new FakeEmailSender(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+
+        var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Shipped, "1Z999"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        // Both columns fall together, so availability is untouched while on-hand stops
+        // overstating what is physically on the shelf.
+        Assert.Equal(3, widgets.Store[widgetId].QuantityOnHand);
+        Assert.Equal(0, widgets.Store[widgetId].QuantityReserved);
+    }
+
+    [Fact]
+    public async Task Cancelling_returns_the_reserved_stock_to_sale()
+    {
+        var (orders, widgets, order, widgetId) = StockedSetup();
+        var handler = new UpdateOrderStatusHandler(orders, new FakeEmailSender(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+
+        var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Cancelled, null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        // Nothing shipped: the hold is released and every unit is sellable again.
+        Assert.Equal(5, widgets.Store[widgetId].QuantityOnHand);
+        Assert.Equal(0, widgets.Store[widgetId].QuantityReserved);
     }
 
     [Fact]

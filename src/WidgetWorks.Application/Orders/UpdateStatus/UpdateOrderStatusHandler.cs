@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Notifications;
 using WidgetWorks.Domain.Common;
@@ -12,7 +13,11 @@ public sealed record UpdateOrderStatusCommand(Guid OrderId, string Status, strin
 /// <see cref="Order.TransitionTo"/>); this handler asks permission, persists what the entity
 /// decided, and notifies the customer.
 /// </summary>
-public sealed class UpdateOrderStatusHandler(IOrderRepository orders, IEmailSender email, TimeProvider clock)
+public sealed class UpdateOrderStatusHandler(
+    IOrderRepository orders,
+    IEmailSender email,
+    TimeProvider clock,
+    ILogger<UpdateOrderStatusHandler> logger)
 {
     public async Task<Result<OrderView>> Handle(UpdateOrderStatusCommand command, CancellationToken ct)
     {
@@ -44,9 +49,16 @@ public sealed class UpdateOrderStatusHandler(IOrderRepository orders, IEmailSend
                 await email.SendAsync(EmailTemplates.OrderCancelled(order), ct);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Transactional email is best-effort; a notification failure must not fail the transition.
+            // The parcel left the warehouse whether or not the mail server was up,
+            // so the transition stands. Logged so the customer's missing notice is
+            // explainable.
+            logger.LogWarning(
+                ex,
+                "Status email failed for order {OrderNumber} moving to {Status}.",
+                order.OrderNumber,
+                target);
         }
 
         return Result<OrderView>.Success(OrderView.From(order));

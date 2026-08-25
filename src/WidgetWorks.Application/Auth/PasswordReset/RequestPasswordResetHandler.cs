@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Notifications;
 using WidgetWorks.Domain.Auth;
@@ -17,7 +18,8 @@ public sealed class RequestPasswordResetHandler(
     ISecureTokenGenerator generator,
     IEmailSender email,
     AppOptions app,
-    TimeProvider clock)
+    TimeProvider clock,
+    ILogger<RequestPasswordResetHandler> logger)
 {
     public async Task<Result> Handle(RequestPasswordResetCommand command, CancellationToken ct)
     {
@@ -46,9 +48,16 @@ public sealed class RequestPasswordResetHandler(
             {
                 await email.SendAsync(AccountEmailTemplates.PasswordReset(user.Email, link), ct);
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort; still return success to avoid leaking account existence.
+                // Still a silent success to the caller: reporting this would turn a mail
+                // outage into an account-enumeration oracle. Logged instead, because a
+                // reset nobody receives is otherwise indistinguishable from one nobody
+                // requested.
+                logger.LogWarning(
+                    ex,
+                    "Password-reset email failed for user {UserId}; the token was still issued.",
+                    user.Id);
             }
         }
 

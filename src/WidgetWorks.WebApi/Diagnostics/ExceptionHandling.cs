@@ -22,11 +22,15 @@ public static class ExceptionHandling
             var correlationId = CorrelationId.Resolve(context);
             var feature = context.Features.Get<IExceptionHandlerFeature>();
 
+            // The path is sanitised because Request.Path.Value is the *decoded* path: a URL
+            // containing %0A arrives here as a real newline, which would end this log entry and
+            // begin one the caller wrote (CWE-117). The correlation id is already clean by
+            // construction; the method comes from the server's own parser.
             app.Logger.LogError(
                 feature?.Error,
                 "Unhandled exception for {Method} {Path} (correlation {CorrelationId}).",
-                context.Request.Method,
-                context.Request.Path.Value,
+                LogSafe.Text(context.Request.Method, maxLength: 16),
+                LogSafe.Text(context.Request.Path.Value),
                 correlationId);
 
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;

@@ -137,3 +137,44 @@ public class CorrelationIdTests
     public void A_header_of_only_junk_falls_back_instead_of_yielding_an_empty_id()
         => Assert.Equal("trace-assigned-by-the-host", CorrelationId.Resolve(RequestWith("<<<>>>")));
 }
+/// <summary>
+/// Making caller-controlled text safe for a log line. CodeQL flagged the original version of the
+/// exception handler for exactly this: Request.Path.Value is the decoded path, so %0A in a URL
+/// arrives as a real newline and the caller gets to write a log entry.
+/// </summary>
+public class LogSafeTests
+{
+    [Fact]
+    public void Ordinary_text_survives_untouched()
+        => Assert.Equal("/catalog/widgets", LogSafe.Text("/catalog/widgets"));
+
+    [Fact]
+    public void Newlines_are_removed_so_a_caller_cannot_forge_an_entry()
+    {
+        var forged = LogSafe.Text("/orders\r\nfatal: database deleted by admin");
+
+        Assert.DoesNotContain('\n', forged);
+        Assert.DoesNotContain('\r', forged);
+        // The text still reads, so an operator can see what was actually requested.
+        Assert.StartsWith("/orders", forged, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Tabs_and_other_control_characters_go_too()
+        => Assert.Equal("ab", LogSafe.Text("a\tb\u0000"));
+
+    [Fact]
+    public void Odd_but_printable_characters_are_kept_because_that_is_the_evidence()
+        => Assert.Equal("/search?q=<script>", LogSafe.Text("/search?q=<script>"));
+
+    [Fact]
+    public void A_long_value_is_truncated_rather_than_logged_whole()
+        => Assert.Equal(256, LogSafe.Text(new string('a', 5000)).Length);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("\r\n\t")]
+    public void Nothing_usable_becomes_a_marker_rather_than_a_blank_field(string? value)
+        => Assert.Equal(LogSafe.Empty, LogSafe.Text(value));
+}

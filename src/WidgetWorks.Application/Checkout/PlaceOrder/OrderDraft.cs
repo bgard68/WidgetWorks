@@ -59,7 +59,17 @@ public static class OrderDraft
         };
     }
 
-    /// <summary>Human-quotable order number: WW-{date}-{6 chars}, e.g. WW-20260501-A1B2C3.</summary>
+    /// <summary>
+    /// Human-quotable order number: WW-{date}-{10 chars}, e.g. WW-20260501-A1B2C3D4E5.
+    ///
+    /// The suffix is the head of the order's own v4 Guid, so it is random rather than sequential -
+    /// an order number cannot be incremented to reach the next customer's. Its width is the part
+    /// that matters: order_number carries a unique index, so a collision is not a data leak but it
+    /// is a failed checkout, and collisions arrive by the birthday bound rather than when the space
+    /// runs out. Six characters is 24 bits, which is a coin flip at roughly five thousand orders in
+    /// a single day; ten characters is 40 bits, which stays under a rounding error past a million.
+    /// The cost of the extra four characters is four characters.
+    /// </summary>
     public static string NumberFor(DateTimeOffset now, Guid orderId)
-        => $"WW-{now:yyyyMMdd}-{orderId.ToString("N")[..6].ToUpperInvariant()}";
+        => $"WW-{now:yyyyMMdd}-{orderId.ToString("N")[..10].ToUpperInvariant()}";
 }

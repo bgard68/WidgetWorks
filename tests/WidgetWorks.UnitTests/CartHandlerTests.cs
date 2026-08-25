@@ -184,4 +184,33 @@ public class CartHandlerTests
         Assert.Equal("Cart not found.", result.Error);
         Assert.NotNull(await carts.GetAsync(victimCart.Value!.Id, CancellationToken.None));   // untouched
     }
+
+    [Fact]
+    public async Task An_absurd_quantity_clamps_to_stock_instead_of_wrapping_negative()
+    {
+        var widgets = new InMemoryWidgetRepository();
+        var carts = new InMemoryCartRepository();
+        var widgetId = Guid.NewGuid();
+        widgets.Store[widgetId] = new Widget
+        {
+            Id = widgetId,
+            Sku = "WW-001",
+            Name = "Standard Widget Block Cobalt",
+            Price = 9.99m,
+            IsActive = true,
+            QuantityOnHand = 5,
+            QuantityReserved = 0,
+        };
+
+        var handler = new AddCartItemHandler(carts, widgets, new FakeTimeProvider(
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)));
+
+        var result = await handler.Handle(
+            new AddCartItemCommand(null, null, widgetId, int.MaxValue), CancellationToken.None);
+
+        // In int arithmetic this wrapped negative and answered "out of stock". The clamp should
+        // clamp: five are available, so five is what lands in the cart.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(5, result.Value!.Items.Single().Quantity);
+    }
 }

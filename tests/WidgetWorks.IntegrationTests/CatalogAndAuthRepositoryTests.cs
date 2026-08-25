@@ -1,6 +1,7 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Auth;
 using WidgetWorks.Domain.Catalog;
+using WidgetWorks.Domain.Orders;
 using WidgetWorks.Domain.Users;
 using WidgetWorks.Infrastructure.Persistence;
 using Xunit;
@@ -92,14 +93,14 @@ public class CatalogAndAuthRepositoryTests(PostgresFixture db)
     {
         var widget = await GivenWidget();
         widget.Price = 99.99m;
-        widget.QuantityOnHand = 3;
+        widget.QuantityOnHand = 3;   // ignored: an edit no longer writes stock
         widget.IsActive = false;
 
-        await Widgets.UpdateAsync(widget, CancellationToken.None);
+        await Widgets.UpdateDetailsAsync(widget, CancellationToken.None);
 
         var stored = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
         Assert.Equal(99.99m, stored!.Price);
-        Assert.Equal(3, stored.QuantityOnHand);
+        Assert.Equal(10, stored.QuantityOnHand);
         Assert.False(stored.IsActive);
     }
 
@@ -632,5 +633,132 @@ public class CatalogAndAuthRepositoryTests(PostgresFixture db)
 
         Assert.Equal(2, results.Count);
         Assert.Contains($"A {token}", results[0].Name, StringComparison.Ordinal);
+    }
+
+    // ---- the widget write paths, split so each writes only what it owns -----------------------
+
+    [Fact]
+    public async Task Editing_a_widget_cannot_revert_a_reservation_taken_meanwhile()
+    {
+        var widget = await GivenWidget(onHand: 10);
+
+        // The admin's copy, read before anyone bought anything.
+        var asLoadedByTheAdmin = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(0, asLoadedByTheAdmin!.QuantityReserved);
+
+        // A customer checks out in the gap between that read and the save.
+        var order = OrderForWidget(widget.Id, quantity: 3);
+        await new OrderRepository(db.Connections).TryPlaceAsync(order, CancellationToken.None);
+
+        asLoadedByTheAdmin.Name = "Renamed after the order";
+        await Widgets.UpdateDetailsAsync(asLoadedByTheAdmin, CancellationToken.None);
+
+        var stored = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal("Renamed after the order", stored!.Name);
+        // The whole point: the edit saved the name and left the reservation alone. Writing the
+        // admin's stale copy back would have set this to 0 and put sold stock back on sale.
+        Assert.Equal(3, stored.QuantityReserved);
+        Assert.Equal(7, stored.QuantityAvailable);
+    }
+
+    [Fact]
+    public async Task Adjusting_stock_counts_a_reservation_taken_meanwhile()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderForWidget(widget.Id, quantity: 4);
+        await new OrderRepository(db.Connections).TryPlaceAsync(order, CancellationToken.None);
+
+        var available = await Widgets.AdjustStockAsync(widget.Id, 5, Now, CancellationToken.None);
+
+        // 10 + 5 on hand, 4 held: 11 sellable. The arithmetic happens in the statement, so the
+        // reservation is part of the answer rather than something the caller never saw.
+        Assert.Equal(11, available);
+        var stored = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(15, stored!.QuantityOnHand);
+        Assert.Equal(4, stored.QuantityReserved);
+    }
+
+    [Fact]
+    public async Task Two_adjustments_both_count_instead_of_one_winning()
+    {
+        var widget = await GivenWidget(onHand: 10);
+
+        var first = await Widgets.AdjustStockAsync(widget.Id, 5, Now, CancellationToken.None);
+        var second = await Widgets.AdjustStockAsync(widget.Id, 7, Now, CancellationToken.None);
+
+        // Computed in memory from a row read beforehand, the second would have written 17 and lost
+        // the first. As a delta applied by the database, both land.
+        Assert.Equal(15, first);
+        Assert.Equal(22, second);
+    }
+
+    [Fact]
+    public async Task Stock_cannot_be_taken_below_what_is_already_reserved()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderForWidget(widget.Id, quantity: 6);
+        await new OrderRepository(db.Connections).TryPlaceAsync(order, CancellationToken.None);
+
+        var refused = await Widgets.AdjustStockAsync(widget.Id, -7, Now, CancellationToken.None);
+
+        Assert.Null(refused);
+        var stored = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(10, stored!.QuantityOnHand);
+    }
+
+    [Fact]
+    public async Task Stock_cannot_go_negative()
+    {
+        var widget = await GivenWidget(onHand: 2);
+
+        Assert.Null(await Widgets.AdjustStockAsync(widget.Id, -3, Now, CancellationToken.None));
+        Assert.Equal(2, (await Widgets.GetByIdAsync(widget.Id, CancellationToken.None))!.QuantityOnHand);
+    }
+
+    [Fact]
+    public async Task An_archived_widget_refuses_a_stock_adjustment()
+    {
+        var widget = await GivenWidget(onHand: 4);
+        await Widgets.ArchiveAsync(widget.Id, Now, CancellationToken.None);
+
+        Assert.Null(await Widgets.AdjustStockAsync(widget.Id, 5, Now, CancellationToken.None));
+
+        var stored = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.True(stored!.IsArchived);
+        Assert.False(stored.IsActive);
+    }
+
+    /// <summary>A one-line order holding stock against <paramref name="widgetId"/>.</summary>
+    private Order OrderForWidget(Guid widgetId, int quantity)
+    {
+        var order = new Order
+        {
+            Id = Guid.NewGuid(),
+            OrderNumber = Unique("WW-").ToUpperInvariant(),
+            Email = "shopper@widgetworks.test",
+            Status = OrderStatus.Pending,
+            ShipName = "Jane",
+            ShipLine1 = "1 Main St",
+            ShipCity = "Springfield",
+            ShipState = "IL",
+            ShipPostalCode = "62701",
+            ShipCountry = "US",
+            ShippingMethod = "standard",
+            Total = 10m * quantity,
+            Subtotal = 10m * quantity,
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        };
+        order.Items.Add(new OrderItem
+        {
+            Id = Guid.NewGuid(),
+            WidgetId = widgetId,
+            Sku = "SKU-FIXTURE",
+            Name = "Fixture",
+            UnitPrice = 10m,
+            Quantity = quantity,
+            LineSubtotal = 10m * quantity,
+        });
+        return order;
     }
 }

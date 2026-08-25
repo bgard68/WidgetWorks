@@ -44,7 +44,27 @@ public interface IWidgetRepository
 
     Task AddAsync(Widget widget, CancellationToken ct);
 
-    Task UpdateAsync(Widget widget, CancellationToken ct);
+    /// <summary>
+    /// Saves the editable description of a widget: name, description, image, price and whether it
+    /// is listed. Deliberately writes nothing about stock. The previous single writer put every
+    /// column in the statement, so a caller that had read the row a moment earlier wrote its stale
+    /// quantity_reserved back over a reservation taken in between - an oversell caused by an edit.
+    /// </summary>
+    Task UpdateDetailsAsync(Widget widget, CancellationToken ct);
+
+    /// <summary>
+    /// Applies a signed delta to on-hand stock and returns the resulting availability, or null when
+    /// the row no longer satisfies the rules - archived, gone, or the delta would take on-hand below
+    /// zero or below what is already reserved.
+    ///
+    /// The arithmetic and both guards run inside the statement rather than in the caller, so a
+    /// reservation taken between reading and writing is accounted for instead of overwritten, and
+    /// two concurrent adjustments both count.
+    /// </summary>
+    Task<int?> AdjustStockAsync(Guid id, int delta, DateTimeOffset now, CancellationToken ct);
+
+    /// <summary>Retires a widget from sale, keeping the row so past orders still resolve.</summary>
+    Task ArchiveAsync(Guid id, DateTimeOffset archivedAt, CancellationToken ct);
 
     /// <summary>How many order lines reference this widget — zero means it can be deleted outright.</summary>
     Task<int> CountOrderLinesAsync(Guid widgetId, CancellationToken ct);

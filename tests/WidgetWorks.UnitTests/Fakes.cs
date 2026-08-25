@@ -69,9 +69,52 @@ public sealed class InMemoryWidgetRepository : IWidgetRepository
         return Task.CompletedTask;
     }
 
-    public Task UpdateAsync(Widget widget, CancellationToken ct)
+    public Task UpdateDetailsAsync(Widget widget, CancellationToken ct)
     {
-        Store[widget.Id] = widget;
+        // Copies the editable fields onto the stored row rather than replacing it. Swapping the
+        // whole object would reintroduce the defect this split exists to fix: the caller's copy
+        // carries the stock it read earlier, which would overwrite a reservation taken since.
+        if (!Store.TryGetValue(widget.Id, out var stored))
+        {
+            return Task.CompletedTask;
+        }
+
+        stored.Name = widget.Name;
+        stored.Description = widget.Description;
+        stored.ImageUrl = widget.ImageUrl;
+        stored.Price = widget.Price;
+        stored.IsActive = widget.IsActive;
+        stored.UpdatedAt = widget.UpdatedAt;
+        return Task.CompletedTask;
+    }
+
+    public Task<int?> AdjustStockAsync(Guid id, int delta, DateTimeOffset now, CancellationToken ct)
+    {
+        if (!Store.TryGetValue(id, out var stored) || stored.IsArchived)
+        {
+            return Task.FromResult<int?>(null);
+        }
+
+        var newOnHand = stored.QuantityOnHand + delta;
+        if (newOnHand < 0 || newOnHand < stored.QuantityReserved)
+        {
+            return Task.FromResult<int?>(null);
+        }
+
+        stored.QuantityOnHand = newOnHand;
+        stored.UpdatedAt = now;
+        return Task.FromResult<int?>(stored.QuantityAvailable);
+    }
+
+    public Task ArchiveAsync(Guid id, DateTimeOffset archivedAt, CancellationToken ct)
+    {
+        if (Store.TryGetValue(id, out var stored))
+        {
+            stored.IsActive = false;
+            stored.ArchivedAt = archivedAt;
+            stored.UpdatedAt = archivedAt;
+        }
+
         return Task.CompletedTask;
     }
 

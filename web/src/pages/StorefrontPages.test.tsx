@@ -131,6 +131,77 @@ describe('CatalogPage', () => {
     await waitFor(() => expect(calls.some((c) => c.url.includes('category=mega'))).toBe(true))
   })
 
+  it('shows no pager when everything fits on one page', async () => {
+    stubFetch([['/catalog/widgets', paged()]])
+
+    renderWithProviders(<CatalogPage />, { at: '/store', path: '/store' })
+    await screen.findByText('Standard Widget')
+
+    // An ordinary shelf should gain no furniture it does not need.
+    expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument()
+  })
+
+  it('pages through a catalog larger than one response', async () => {
+    const calls = stubFetch([['/catalog/widgets',
+      () => ({ items: [widget, soldOut], page: 1, pageSize: 24, totalCount: 50, totalPages: 3 })]])
+    const user = userEvent.setup()
+
+    renderWithProviders(<CatalogPage />, { at: '/store', path: '/store' })
+    await screen.findByText('Standard Widget')
+
+    expect(screen.getByText('Page 1 of 3')).toBeInTheDocument()
+    // Nowhere to go back to from the first page.
+    expect(screen.getByRole('button', { name: /Previous/ })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: /Next/ }))
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('page=2'))).toBe(true))
+  })
+
+  it('steps back a page from further in', async () => {
+    const calls = stubFetch([['/catalog/widgets',
+      () => ({ items: [widget, soldOut], page: 2, pageSize: 24, totalCount: 50, totalPages: 3 })]])
+    const user = userEvent.setup()
+
+    renderWithProviders(<CatalogPage />, { at: '/store?page=2', path: '/store' })
+    await screen.findByText('Standard Widget')
+
+    // Past the first page both directions are live.
+    expect(screen.getByRole('button', { name: /Previous/ })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: /Previous/ }))
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('page=1'))).toBe(true))
+  })
+
+  it('stops at the last page', async () => {
+    stubFetch([['/catalog/widgets',
+      () => ({ items: [widget], page: 3, pageSize: 24, totalCount: 50, totalPages: 3 })]])
+
+    renderWithProviders(<CatalogPage />, { at: '/store?page=3', path: '/store' })
+    await screen.findByText('Standard Widget')
+
+    expect(screen.getByRole('button', { name: /Next/ })).toBeDisabled()
+  })
+
+  it('returns to the first page when the query changes', async () => {
+    const calls = stubFetch([['/catalog/widgets',
+      () => ({ items: [widget, soldOut], page: 3, pageSize: 24, totalCount: 50, totalPages: 3 })]])
+    const user = userEvent.setup()
+
+    renderWithProviders(<CatalogPage />, { at: '/store?page=3', path: '/store' })
+    await screen.findByText('Standard Widget')
+
+    await user.selectOptions(screen.getByLabelText('Sort by'), 'price-desc')
+
+    // Keeping page 3 across a change of query strands the reader on a page the new result may
+    // not have, and the grid comes back empty for no visible reason.
+    await waitFor(() => {
+      const latest = calls[calls.length - 1].url
+      expect(latest).toContain('sort=price-desc')
+      expect(latest).not.toContain('page=3')
+    })
+  })
+
   it('clears a category from the toolbar', async () => {
     stubFetch([['/catalog/widgets', paged()]])
     const user = userEvent.setup()

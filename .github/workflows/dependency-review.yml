@@ -1,0 +1,40 @@
+name: Dependency review
+
+# Refuses a pull request that ADDS a vulnerable dependency, while the change is
+# still a proposal rather than something already on main. CodeQL reads the code
+# this repository writes; this reads the code it takes on trust — NuGet, npm,
+# and the Actions the workflows above consume.
+#
+# Pull requests only, by design: the action diffs a base against a head, so
+# there is nothing for it to compare on a push.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing here pushes; the job token has no use after the clone.
+          persist-credentials: false
+
+      - name: Review the dependencies this pull request adds
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # Moderate rather than high: this store handles checkout and payment,
+          # and a moderate finding in that path is not a rounding error.
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure

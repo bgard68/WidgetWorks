@@ -74,7 +74,7 @@ export function ProductPage() {
           <div className="frame">
             <ProductImage sku={widget.sku} imageUrl={widget.imageUrl} alt={widget.name} />
           </div>
-          <p className="zoomnote">Sample product photography</p>
+          <p className="zoomnote">Illustrated product art</p>
         </div>
 
         {/* Details ----------------------------------------------------- */}

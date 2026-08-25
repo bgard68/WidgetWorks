@@ -6,13 +6,14 @@ describe('productImage', () => {
     expect(productImage({ sku: 'WW-001', imageUrl: 'https://cdn.example/w.jpg' })).toBe('https://cdn.example/w.jpg')
   })
 
-  it('ignores a blank url and falls back to the seeded sample photo', () => {
-    expect(productImage({ sku: 'WW-001', imageUrl: '   ' })).toContain('picsum.photos/seed/ww-ww-001')
-    expect(productImage({ sku: 'WW-001', imageUrl: null })).toContain('picsum.photos/seed/ww-ww-001')
+  it('ignores a blank url and falls back to the bundled illustration', () => {
+    expect(productImage({ sku: 'WW-001', imageUrl: '   ' })).toBe('/products/ww-001.svg')
+    expect(productImage({ sku: 'WW-001', imageUrl: null })).toBe('/products/ww-001.svg')
   })
 
-  it('still produces a stable seed for a widget with no SKU', () => {
-    expect(productImage({ sku: '' })).toContain('/seed/ww-widget/')
+  it('gives SKUs without bespoke art the generic widget illustration', () => {
+    expect(productImage({ sku: 'WW-999' })).toBe('/products/widget.svg')
+    expect(productImage({ sku: '' })).toBe('/products/widget.svg')
   })
 })
 

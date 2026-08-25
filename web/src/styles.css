@@ -503,10 +503,8 @@ select{
   box-shadow:var(--sh-1);transition:border-color .15s ease,box-shadow .15s ease,transform .12s ease;
 }
 .shortcut:hover{border-color:var(--link-light);box-shadow:var(--sh-2);transform:translateY(-2px)}
-.shortcut .ico{
-  display:grid;place-items:center;width:44px;height:44px;border-radius:var(--r-pill);
-  background:var(--surface-3);font-size:1.25rem;
-}
+.shortcut .ico{display:grid;place-items:center;width:44px;height:44px}
+.shortcut .ico svg{width:40px;height:40px;display:block}
 .shortcut .lbl{font-size:.85rem;font-weight:700;color:var(--ink)}
 
 /* Results toolbar */

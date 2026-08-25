@@ -24,7 +24,11 @@ public sealed class AddCartItemHandler(ICartRepository carts, IWidgetRepository 
 
         var cart = await ResolveCartAsync(command.CartId, command.UserId, ct);
         var existing = cart.Items.FirstOrDefault(i => i.WidgetId == command.WidgetId);
-        var desired = Math.Min((existing?.Quantity ?? 0) + command.Quantity, widget.QuantityAvailable);
+        // Widened to long before adding. In int arithmetic a quantity near int.MaxValue wraps
+        // negative, Math.Min then picks the negative, and the shopper is told the item is out of
+        // stock - a misleading answer to a bad request rather than a dangerous one, but the clamp
+        // should do the clamping.
+        var desired = (int)Math.Min((long)(existing?.Quantity ?? 0) + command.Quantity, widget.QuantityAvailable);
         if (desired <= 0)
         {
             return Result<CartView>.Fail("This widget is out of stock.");

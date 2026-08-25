@@ -68,6 +68,11 @@ builder.Services
             ValidIssuer = jwtOptions.Issuer,
             ValidAudience = jwtOptions.Audience,
             IssuerSigningKeyResolver = (_, _, kid, _) => keyRing.ResolveKeys(kid),
+
+            // The default tolerance is five minutes, which silently turns a fifteen-minute access
+            // token into a twenty-minute one. Thirty seconds is enough for ordinary clock drift
+            // between hosts and makes the configured lifetime mean what it says.
+            ClockSkew = TimeSpan.FromSeconds(30),
         };
         options.Events = new JwtBearerEvents
         {

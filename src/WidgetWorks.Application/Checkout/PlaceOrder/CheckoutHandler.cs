@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Carts;
 using WidgetWorks.Application.Notifications;
@@ -40,7 +41,8 @@ public sealed class CheckoutHandler(
     OrderPricer pricer,
     IPaymentGateway payments,
     IEmailSender email,
-    TimeProvider clock)
+    TimeProvider clock,
+    ILogger<CheckoutHandler> logger)
 {
     public async Task<Result<CheckoutResult>> Handle(CheckoutCommand command, CancellationToken ct)
     {
@@ -119,9 +121,14 @@ public sealed class CheckoutHandler(
         {
             await email.SendAsync(EmailTemplates.OrderReceived(order), ct);
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort receipt email; never fail a paid order on a notification error.
+            // The card was charged; a notification error must not turn that into a
+            // failed checkout. Logged so a missing receipt can be chased.
+            logger.LogWarning(
+                ex,
+                "Receipt email failed for paid order {OrderNumber}; the order stands.",
+                order.OrderNumber);
         }
 
         return Result<CheckoutResult>.Success(new CheckoutResult(

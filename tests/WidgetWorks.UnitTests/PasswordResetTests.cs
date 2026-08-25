@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application;
 using WidgetWorks.Application.Auth.PasswordReset;
@@ -39,8 +41,8 @@ public class PasswordResetTests
             new FakeSecureTokenGenerator(), hasher, new FakeEmailSender(), user);
     }
 
-    private static RequestPasswordResetHandler Request(Ctx c)
-        => new(c.Users, c.Tokens, c.Gen, c.Email, new AppOptions(), c.Clock);
+    private static RequestPasswordResetHandler Request(Ctx c, ILogger<RequestPasswordResetHandler>? logger = null)
+        => new(c.Users, c.Tokens, c.Gen, c.Email, new AppOptions(), c.Clock, logger ?? NullLogger<RequestPasswordResetHandler>.Instance);
 
     private static ResetPasswordHandler Reset(Ctx c)
         => new(c.Users, c.Tokens, c.Refresh, c.Gen, c.Hasher, new RecordingAuditLog(), c.Clock);
@@ -121,13 +123,20 @@ public class PasswordResetTests
     public async Task Request_still_succeeds_when_the_reset_email_fails()
     {
         var c = Setup();
-        var handler = new RequestPasswordResetHandler(c.Users, c.Tokens, c.Gen, new ThrowingEmailSender(), new WidgetWorks.Application.AppOptions(), c.Clock);
+        var logger = new RecordingLogger<RequestPasswordResetHandler>();
+        var handler = new RequestPasswordResetHandler(c.Users, c.Tokens, c.Gen, new ThrowingEmailSender(), new WidgetWorks.Application.AppOptions(), c.Clock, logger);
 
         var result = await handler.Handle(new RequestPasswordResetCommand("jane@example.com"), CancellationToken.None);
 
         // Still a silent 200: a mail outage must not become an account-enumeration oracle.
         Assert.True(result.IsSuccess);
         Assert.Single(c.Tokens.Tokens);
+
+        // Silent to the caller, not to the operator - a reset nobody receives is
+        // otherwise indistinguishable from one nobody requested.
+        var logged = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, logged.Level);
+        Assert.NotNull(logged.Error);
     }
 
     [Theory]

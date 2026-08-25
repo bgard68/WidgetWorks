@@ -10,7 +10,13 @@ export function ForgotPasswordPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true)
-    try { await api('/auth/forgot-password', { method: 'POST', body: { email } }) } catch { /* ignore */ }
+    try {
+      await api('/auth/forgot-password', { method: 'POST', body: { email } })
+    } catch (err) {
+      // Deliberately not surfaced: showing this would tell a stranger which
+      // addresses have accounts. Logged so a real outage is still diagnosable.
+      console.warn('Password reset request failed; the response stays identical.', err)
+    }
     setBusy(false)
     setSent(true)
   }

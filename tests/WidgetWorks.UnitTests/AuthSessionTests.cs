@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Auth.Logout;
@@ -202,8 +204,8 @@ public class AuthSessionTests
 
     // ---- registration --------------------------------------------------------------------
 
-    private static RegisterHandler Register(Ctx c, IEmailSender email)
-        => new(c.Users, new FakePasswordHasher(), email, c.Clock);
+    private static RegisterHandler Register(Ctx c, IEmailSender email, ILogger<RegisterHandler>? logger = null)
+        => new(c.Users, new FakePasswordHasher(), email, c.Clock, logger ?? NullLogger<RegisterHandler>.Instance);
 
     [Theory]
     [InlineData("not-an-email")]
@@ -268,12 +270,17 @@ public class AuthSessionTests
     {
         var c = Setup();
 
-        var result = await Register(c, new ThrowingEmailSender())
+        var logger = new RecordingLogger<RegisterHandler>();
+        var result = await Register(c, new ThrowingEmailSender(), logger)
             .Handle(new RegisterCommand("new@example.com", "long-enough-pw"), CancellationToken.None);
 
         // A dead mail server must not cost someone their account.
         Assert.True(result.IsSuccess);
         Assert.Contains(c.Users.Store.Values, u => u.NormalizedEmail == "NEW@EXAMPLE.COM");
+
+        var logged = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, logged.Level);
+        Assert.NotNull(logged.Error);
     }
 
     private sealed class ThrowingEmailSender : IEmailSender

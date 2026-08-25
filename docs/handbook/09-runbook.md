@@ -25,6 +25,54 @@ Restart the API after changing config.
 
 ---
 
+## Health probes — which one to point at what
+
+Two endpoints answering two different questions. Wiring the wrong one is how a monitoring signal
+ends up unable to report bad news.
+
+| Endpoint | Answers | Touches the database | Point this at |
+|---|---|---|---|
+| `GET /health` | Did this process start correctly? | **No** | Keep-warm pings, first-boot provisioning checks |
+| `GET /health/ready` | Can this instance serve a request right now? | **Yes** — `select 1` | Platform health probe, alerting, load-balancer rotation |
+
+```bash
+curl -i http://localhost:8080/health          # {"status":"ok",...}
+curl -i http://localhost:8080/health/ready    # {"status":"ready","database":"ok",...}
+```
+
+**Why they are separate, and why it matters for the bill.** `/health` is pinged every few minutes to
+hold a free-tier App Service instance loaded. If that ping woke the database each time it would hold
+a metered resource awake around the clock — roughly 180 CU-hrs against Neon's 100 CU-hr monthly free
+allowance. Warming the app while letting the database sleep is deliberate.
+
+So: **never point a scheduled warm-up at `/health/ready`**, and never make `/health` query the
+database. They look interchangeable and are not.
+
+`/health/ready` returns `503` with the failing exception *type* when the database does not answer —
+never the message, because a connection error can carry a host name or a user and the endpoint is
+anonymous.
+
+## Tracing a failure a customer reports
+
+Every response carries an `X-Correlation-Id` header, and a `500` repeats it in the body:
+
+```json
+{ "error": "Something went wrong on our side. Quote the reference below if you contact us.",
+  "correlationId": "0HN7…" }
+```
+
+The same id is on the log line for that request, so a customer report becomes a lookup rather than a
+search through everything that happened at that minute:
+
+```bash
+# Azure App Service log stream, or wherever logs land
+az webapp log tail --name <app> --resource-group <rg> | grep 0HN7
+```
+
+If the caller supplied `X-Correlation-Id`, that value is kept so a trace spans several services —
+sanitised first, because it reaches log messages and text carrying newlines could otherwise forge
+whole entries.
+
 ## Email
 
 ### Test locally — Dev sender (default, zero setup)

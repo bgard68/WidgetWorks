@@ -56,6 +56,9 @@ by policy.
 | `Email:Host/Port/Username/Password/...` | SMTP settings | env / secret store; user-secrets in dev | Password is secret. |
 | `Cors:AllowedOrigins` | Browser origins allowed to call the API | env / appsettings | Not secret. |
 | `App:BaseUrl` | Public SPA URL (used in email links) | env / appsettings | Not secret. |
+| `RateLimiting:TrustForwardedFor` | Whether `X-Forwarded-For` may be believed | env / appsettings | Not secret, but **load-bearing** — see below. |
+| `RateLimiting:Auth\|Checkout\|Lookup` | Throttling budgets per caller | env / appsettings | Not secret; tune during an incident without a redeploy. |
+| `Reservations:*` | Stale-reservation sweep window, interval, batch, on/off | env / appsettings | Not secret. |
 | `VITE_API_BASE_URL`, `VITE_GOOGLE_CLIENT_ID` | Web build-time config | GitHub Actions **Variables** (CI) / `web/.env.local` (dev) | Public; injected at build time, never committed. |
 
 **Why user-secrets vs `.env`:** user-secrets is read by the .NET app when you run it directly
@@ -63,6 +66,67 @@ by policy.
 container can't read your host user-secrets, so the Docker path uses a git-ignored `.env` for
 Compose variable substitution. In CI/prod, use **GitHub Actions Secrets** and **Azure App Service
 settings / Key Vault**. See [`docs/local-development.md`](../local-development.md).
+
+## Throttling, and the one setting that can cause an outage
+
+Sign-in, registration, password reset, guest order lookup and checkout are rate limited. Budgets
+live in `appsettings.json` so they can be tightened during an incident without a redeploy:
+
+```json
+"RateLimiting": {
+  "TrustForwardedFor": false,
+  "Auth":     { "PermitLimit": 20, "WindowSeconds": 60 },
+  "Checkout": { "PermitLimit":  8, "WindowSeconds": 60 },
+  "Lookup":   { "PermitLimit": 10, "WindowSeconds": 60 }
+}
+```
+
+**`TrustForwardedFor` decides whether throttling works at all behind a proxy.** The limiter
+partitions by caller. Behind a reverse proxy every request arrives carrying the *proxy's* address,
+so with this left `false` every caller in the world collapses into one partition and the limiter
+becomes a global cap that the first busy minute trips for everybody — a self-inflicted outage with
+nothing in the logs to explain it.
+
+The inverse is the security mistake: set `true` with no proxy in front and a caller can forge the
+header, minting a fresh partition per request and opting out of throttling entirely.
+
+| Deployment | Setting |
+|---|---|
+| Behind App Service, a load balancer, Cloudflare, any reverse proxy | `true` |
+| Direct to the app, local development, container with no proxy | `false` |
+
+The app watches real traffic and logs a warning **once** when the setting and the traffic disagree,
+in either direction. If you see either warning, the setting is wrong — it is not advisory.
+
+There is deliberately **no global limiter**: a catalogue page issues several requests in a burst, so
+a global cap would throttle ordinary browsing while adding nothing an endpoint policy does not
+already do.
+
+## Reclaiming stock from unfinished payments
+
+An order whose payment settles asynchronously holds its stock while it waits for a provider webhook.
+If that webhook never arrives — provider outage, dropped delivery, a shopper closing the tab at the
+bank's redirect — the stock would be held forever. A background sweep returns it:
+
+```json
+"Reservations": {
+  "Enabled": true,
+  "ExpireAfterMinutes": 15,
+  "SweepIntervalMinutes": 5,
+  "BatchSize": 100
+}
+```
+
+`ExpireAfterMinutes` is a trade, not a tuning knob. Too short and a slow but honest bank redirect
+loses a customer's basket; too long and abandoned or abusive orders hold the catalogue hostage.
+Fifteen minutes is longer than any interactive redirect and short enough that a returning shopper
+rarely finds the item gone.
+
+`BatchSize` caps one pass, so a backlog is worked through over several sweeps rather than one long
+transaction. `Enabled: false` turns the sweep off for a host that should not run background work.
+
+Releasing reuses the same transactional path as a reported payment failure, so a webhook landing
+during a sweep cannot double-release: whichever writes first wins and the other is declined.
 
 ## Email setup
 

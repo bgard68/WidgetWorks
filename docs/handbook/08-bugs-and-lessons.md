@@ -56,6 +56,12 @@ Rows 1–11 are from the first phase, 12–32 from the second, 33–39 from the 
 | 37 | A challenge-token test failed against a correct implementation | writing tests around `ValidateChallengeTokenAsync` | Issuance uses the injected `TimeProvider` but `TokenValidationParameters` has no such hook, so lifetime is validated against the **system** clock. A token minted at a fixed past date is born expired | Anchor those tests on real time and move the *issuing* clock to express age | "Inject time everywhere" holds only as far as the libraries let it; find the seams that don't take your clock |
 | 38 | An integration test asserted a uniqueness rule the schema does not have | the test failed | `ix_widgets_live_name` is a plain index for ordering the live set, not a unique one. Only SKU is unique (case-folded via `upper(sku)`) | Assert the rule that exists, and add a test documenting that names are deliberately **not** unique | Read the migration, not your memory of it — a test that asserts an imagined constraint fails honestly, but the same assumption in code would not |
 | 39 | New frontend tests passed but `tsc` failed the build | running `npm run build`, not just `npm test` | `.at(-1)` again — the **same ES2022-against-ES2020 trap as row 23** — plus a `let x = null` only assigned inside a Promise executor, which TypeScript narrows to `never` | Index arithmetic, and `let release!: () => void` | Vitest transpiles without type-checking, so a green test run says nothing about the build. Run the gate CI runs |
+| 40 | An admin renaming a widget could silently revert a live reservation | reading the write path after the inventory work | One `UpdateAsync` wrote **every** column from the caller's in-memory object, and three handlers used load-change-save. A reservation taken between the read and the save was overwritten — an oversell caused by an edit, with no attacker and no error | Split the write path by intent — details, stock, archive — and move the stock arithmetic and its guards into the `UPDATE` itself | A repository method that writes every column turns every caller into a potential lost update. Write what you mean, not the whole row |
+| 41 | Two deliveries of one payment webhook released the same stock twice | tracing the settlement path | The handler guarded with read-check-write, which two concurrent deliveries both pass. The second compensation decremented `quantity_reserved` again and ate stock held by a *different* order | Compare-and-set: each payment write names the statuses it may apply from and returns whether it won; only the winner compensates | Application-level status checks are courtesy. If two callers can race, the row has to be the arbiter |
+| 42 | Order numbers collided at a few thousand orders a day | arithmetic, not a failure | The suffix was 6 hex characters of the order's Guid — 24 bits, scoped to one day. `order_number` is uniquely indexed, so a collision was never a leak, but it rolled the placement back: a hard checkout failure | Widen to 10 characters (40 bits) and pin the width with a test | Collisions arrive by the birthday bound, not when the space runs out. 16.7 million values is a coin flip at 5,000 a day |
+| 43 | The API test suite passed individually and failed together | adding rate limiting | The test server sends no remote address, so every request shared one throttling partition and the suite exhausted a realistic budget between its own tests | Raise the budgets in the fixture explicitly, and prove rejection separately with a host configured down to two | The suite reproduced the exact production failure mode — all callers in one partition — which is the trap behind any reverse proxy |
+| 44 | The health endpoint could never report unhealthy | asking an operations question, not a security one | `/health` closed over a variable captured at **startup**, so once the process was up it answered `ok` forever — database gone, still `ok`. The keep-warm ping held it in rotation on an answer that could not change | Add `/health/ready` that queries the database; leave `/health` shallow | The obvious fix — query the database in `/health` — would have cost ~180 CU-hrs against a 100 CU-hr budget. The shallow probe was deliberate and said so in a comment |
+| 45 | CodeQL found log injection in the code written to fix a logging gap | the scanner blocked the merge | The new exception handler logged `Request.Path.Value` raw. That is the **decoded** path, so `%0A` in a URL arrives as a real newline and the caller writes their own log entry (CWE-117) | `LogSafe.Text` strips control characters from the path and method, keeping printable oddities | The correlation id on the line beside it *was* sanitised, with a comment citing this exact weakness. Knowing a rule is not the same as applying it everywhere it holds |
 
 ## Lessons learned
 
@@ -73,6 +79,22 @@ Rows 1–11 are from the first phase, 12–32 from the second, 33–39 from the 
   **and** by a database trigger — a bug or a direct SQL write still can’t violate it.
 - **Never trust the client for money.** Totals — subtotal, shipping, and per-state tax — are
   recomputed server-side at checkout; the browser’s numbers are display-only.
+- **Let the row arbitrate, not the handler.** Read-check-write reads like a guard and is not
+  one: any two callers who can race will both pass it. Compare-and-set — naming the states a
+  write may apply from and acting only when it wins — turned duplicate webhooks, out-of-order
+  events and concurrent sweeps from bugs into no-ops, and it is one `where` clause.
+- **Write what you mean, not the whole row.** A single repository method that set every
+  column made every caller a possible lost update, including an admin editing a product name
+  during a checkout. Splitting writes by intent removed a whole class of defect rather than
+  one instance of it.
+- **Read the reasoning before changing the code.** The obvious fix for a health check that
+  could not fail was to make it query the database — which would have doubled the database
+  bill, for reasons written down in the workflow that pings it. It would have passed every
+  test and looked right in review.
+- **The gates catch what the author cannot.** Three real defects in this round were found by
+  CI, by the coverage floor, and by CodeQL — not by re-reading the diff. The one that stings
+  is the last: log injection in a handler whose *neighbouring line* was sanitised against
+  exactly that weakness.
 - **Secrets discipline pays off.** `.gitignore` + `.gitleaks.toml` + an always-on secret
   scan meant “no secret in the repo” was enforced, not aspirational — and the one allowed
   exception (documented demo creds) is explicit.

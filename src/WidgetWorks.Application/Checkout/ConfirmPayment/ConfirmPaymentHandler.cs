@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Notifications;
 using WidgetWorks.Domain.Common;
@@ -13,7 +14,11 @@ public sealed record ConfirmPaymentCommand(string Provider, PaymentEventType Typ
 /// status. On success it marks the order Paid and emails the receipt; on failure it releases the
 /// inventory reservation.
 /// </summary>
-public sealed class ConfirmPaymentHandler(IOrderRepository orders, IEmailSender email, TimeProvider clock)
+public sealed class ConfirmPaymentHandler(
+    IOrderRepository orders,
+    IEmailSender email,
+    TimeProvider clock,
+    ILogger<ConfirmPaymentHandler> logger)
 {
     public async Task<Result<string>> Handle(ConfirmPaymentCommand command, CancellationToken ct)
     {
@@ -40,9 +45,14 @@ public sealed class ConfirmPaymentHandler(IOrderRepository orders, IEmailSender 
             {
                 await email.SendAsync(EmailTemplates.OrderReceived(order), ct);
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort receipt email; never fail settlement on a notification error.
+                // The provider settled the money; failing here would make it retry a
+                // webhook that worked. Logged so the missing receipt is traceable.
+                logger.LogWarning(
+                    ex,
+                    "Receipt email failed for settled order {OrderNumber}; the order is paid.",
+                    order.OrderNumber);
             }
 
             return Result<string>.Success(OrderStatus.Paid);

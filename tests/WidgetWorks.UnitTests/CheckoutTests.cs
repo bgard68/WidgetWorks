@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Checkout.PlaceOrder;
@@ -35,8 +37,8 @@ public class CheckoutTests
         return new Ctx(carts, widgets, orders, widget, cart.Id);
     }
 
-    private static CheckoutHandler Handler(Ctx c, MockPaymentGateway gateway, IEmailSender email)
-        => new(c.Carts, c.Widgets, c.Orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), gateway, email, Clock());
+    private static CheckoutHandler Handler(Ctx c, MockPaymentGateway gateway, IEmailSender email, ILogger<CheckoutHandler>? logger = null)
+        => new(c.Carts, c.Widgets, c.Orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), gateway, email, Clock(), logger ?? NullLogger<CheckoutHandler>.Instance);
 
     [Fact]
     public async Task Successful_checkout_pays_reserves_clears_cart_and_emails_receipt()
@@ -124,7 +126,7 @@ public class CheckoutTests
         var carts = new InMemoryCartRepository();
         var cart = await carts.CreateAsync(null, CancellationToken.None);
         var orders = new InMemoryOrderRepository(widgets);
-        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), new FakeEmailSender(), Clock());
+        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), new FakeEmailSender(), Clock(), NullLogger<CheckoutHandler>.Instance);
 
         var result = await handler.Handle(new CheckoutCommand(cart.Id, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
 
@@ -166,13 +168,21 @@ public class CheckoutTests
     {
         var c = await SetupAsync();
 
-        var result = await Handler(c, new MockPaymentGateway(), new ThrowingEmailSender())
+        var logger = new RecordingLogger<CheckoutHandler>();
+        var result = await Handler(c, new MockPaymentGateway(), new ThrowingEmailSender(), logger)
             .Handle(new CheckoutCommand(c.CartId, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
 
         // The money moved; a dead mail server must not turn that into a checkout error.
         Assert.True(result.IsSuccess);
         Assert.Equal(OrderStatus.Paid, result.Value!.Status);
         Assert.Equal(OrderStatus.Paid, c.Orders.Orders.Single().Status);
+
+        // Swallowed, not hidden: without the log a missing receipt looks like
+        // nothing ever happened.
+        var logged = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, logged.Level);
+        Assert.Contains(c.Orders.Orders.Single().OrderNumber, logged.Message);
+        Assert.IsType<InvalidOperationException>(logged.Error);
     }
 
     [Fact]

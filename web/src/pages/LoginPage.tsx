@@ -19,7 +19,14 @@ export function LoginPage() {
 
   async function mergeCartThenGo() {
     if (cart?.id) {
-      try { await api<CartView>('/cart/merge', { method: 'POST', body: { guestCartId: cart.id } }) } catch { /* ignore */ }
+      try {
+        await api<CartView>('/cart/merge', { method: 'POST', body: { guestCartId: cart.id } })
+      } catch (err) {
+        // The credentials were accepted; a basket problem must not undo that, so
+        // the shopper still goes through. Logged because a cart that silently
+        // fails to merge looks to them like items simply vanished.
+        console.warn('Cart merge failed after sign-in; continuing without it.', err)
+      }
       await refresh()
     }
     navigate('/store')

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Checkout.ConfirmPayment;
@@ -32,7 +33,7 @@ public class ConfirmPaymentTests
 
         var orders = new InMemoryOrderRepository(widgets);
         var email = new FakeEmailSender();
-        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), email, Clock());
+        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), email, Clock(), NullLogger<CheckoutHandler>.Instance);
 
         var result = await handler.Handle(
             new CheckoutCommand(cart.Id, null, "jane@example.com", Address(), "Standard", "klarna_demo"), CancellationToken.None);
@@ -46,7 +47,7 @@ public class ConfirmPaymentTests
     public async Task Succeeded_webhook_marks_paid_and_emails_receipt()
     {
         var (ctx, placed, email) = await PlaceAsyncOrder();
-        var confirm = new ConfirmPaymentHandler(ctx.Orders, email, Clock());
+        var confirm = new ConfirmPaymentHandler(ctx.Orders, email, Clock(), NullLogger<ConfirmPaymentHandler>.Instance);
 
         var result = await confirm.Handle(
             new ConfirmPaymentCommand("Mock", PaymentEventType.Succeeded, placed.PaymentReference), CancellationToken.None);
@@ -62,7 +63,7 @@ public class ConfirmPaymentTests
     public async Task A_failed_receipt_email_does_not_fail_the_settlement()
     {
         var (ctx, placed, _) = await PlaceAsyncOrder();
-        var confirm = new ConfirmPaymentHandler(ctx.Orders, new ThrowingEmailSender(), Clock());
+        var confirm = new ConfirmPaymentHandler(ctx.Orders, new ThrowingEmailSender(), Clock(), NullLogger<ConfirmPaymentHandler>.Instance);
 
         var result = await confirm.Handle(
             new ConfirmPaymentCommand("Mock", PaymentEventType.Succeeded, placed.PaymentReference), CancellationToken.None);
@@ -82,7 +83,7 @@ public class ConfirmPaymentTests
     public async Task Failed_webhook_marks_failed_and_releases_reservation()
     {
         var (ctx, placed, email) = await PlaceAsyncOrder();
-        var confirm = new ConfirmPaymentHandler(ctx.Orders, email, Clock());
+        var confirm = new ConfirmPaymentHandler(ctx.Orders, email, Clock(), NullLogger<ConfirmPaymentHandler>.Instance);
 
         var result = await confirm.Handle(
             new ConfirmPaymentCommand("Mock", PaymentEventType.Failed, placed.PaymentReference), CancellationToken.None);
@@ -96,7 +97,7 @@ public class ConfirmPaymentTests
     public async Task Duplicate_webhook_is_idempotent()
     {
         var (ctx, placed, email) = await PlaceAsyncOrder();
-        var confirm = new ConfirmPaymentHandler(ctx.Orders, email, Clock());
+        var confirm = new ConfirmPaymentHandler(ctx.Orders, email, Clock(), NullLogger<ConfirmPaymentHandler>.Instance);
         await confirm.Handle(new ConfirmPaymentCommand("Mock", PaymentEventType.Succeeded, placed.PaymentReference), CancellationToken.None);
 
         // A late/duplicate "failed" event for an already-paid order is a no-op.
@@ -113,7 +114,7 @@ public class ConfirmPaymentTests
     public async Task Unknown_reference_is_reported()
     {
         var (ctx, _, email) = await PlaceAsyncOrder();
-        var confirm = new ConfirmPaymentHandler(ctx.Orders, email, Clock());
+        var confirm = new ConfirmPaymentHandler(ctx.Orders, email, Clock(), NullLogger<ConfirmPaymentHandler>.Instance);
 
         var result = await confirm.Handle(
             new ConfirmPaymentCommand("Mock", PaymentEventType.Succeeded, "mock_pi_nope"), CancellationToken.None);

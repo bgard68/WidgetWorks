@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Notifications;
 using WidgetWorks.Domain.Auth;
@@ -19,7 +20,8 @@ public sealed class GoogleLoginHandler(
     ITokenService tokens,
     IAuditLog audit,
     IEmailSender email,
-    TimeProvider clock)
+    TimeProvider clock,
+    ILogger<GoogleLoginHandler> logger)
 {
     public async Task<Result<AuthResponse>> Handle(GoogleLoginCommand command, CancellationToken ct)
     {
@@ -65,9 +67,14 @@ public sealed class GoogleLoginHandler(
                 {
                     await email.SendAsync(AccountEmailTemplates.Welcome(user.Email), ct);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Welcome email is best-effort.
+                    // Best-effort: a dead mail server must not cost someone their first
+                    // sign-in. Logged so the outage is visible rather than silent.
+                    logger.LogWarning(
+                        ex,
+                        "Welcome email failed for new Google user {UserId}; the account stands.",
+                        user.Id);
                 }
             }
         }

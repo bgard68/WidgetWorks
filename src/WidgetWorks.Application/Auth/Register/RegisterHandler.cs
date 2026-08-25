@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Notifications;
 using WidgetWorks.Domain.Common;
@@ -7,7 +8,12 @@ namespace WidgetWorks.Application.Auth.Register;
 
 public sealed record RegisterCommand(string Email, string Password);
 
-public sealed class RegisterHandler(IUserRepository users, IPasswordHasher hasher, IEmailSender email, TimeProvider clock)
+public sealed class RegisterHandler(
+    IUserRepository users,
+    IPasswordHasher hasher,
+    IEmailSender email,
+    TimeProvider clock,
+    ILogger<RegisterHandler> logger)
 {
     public async Task<Result> Handle(RegisterCommand command, CancellationToken ct)
     {
@@ -46,9 +52,14 @@ public sealed class RegisterHandler(IUserRepository users, IPasswordHasher hashe
         {
             await email.SendAsync(AccountEmailTemplates.Welcome(user.Email), ct);
         }
-        catch
+        catch (Exception ex)
         {
-            // Welcome email is best-effort; never fail registration on a notification error.
+            // Never fail registration on a notification error - the account exists
+            // either way. Logged so a mail outage does not look like nothing happened.
+            logger.LogWarning(
+                ex,
+                "Welcome email failed for new user {UserId}; the account stands.",
+                user.Id);
         }
 
         return Result.Success();

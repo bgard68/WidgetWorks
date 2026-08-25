@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Auth.Google;
@@ -11,8 +13,8 @@ public class GoogleLoginTests
 {
     private static FakeTimeProvider Clock() => new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
-    private static GoogleLoginHandler Handler(FakeGoogleTokenValidator validator, InMemoryUserRepository users, IEmailSender? email = null)
-        => new(validator, users, new InMemoryRefreshTokenRepository(), new StubTokenService(), new RecordingAuditLog(), email ?? new FakeEmailSender(), Clock());
+    private static GoogleLoginHandler Handler(FakeGoogleTokenValidator validator, InMemoryUserRepository users, IEmailSender? email = null, ILogger<GoogleLoginHandler>? logger = null)
+        => new(validator, users, new InMemoryRefreshTokenRepository(), new StubTokenService(), new RecordingAuditLog(), email ?? new FakeEmailSender(), Clock(), logger ?? NullLogger<GoogleLoginHandler>.Instance);
 
     [Fact]
     public async Task New_google_user_is_provisioned_and_tokens_issued()
@@ -125,11 +127,16 @@ public class GoogleLoginTests
         var users = new InMemoryUserRepository();
         var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-999", "new@example.com", true, "New User") };
 
-        var result = await Handler(validator, users, new ThrowingEmailSender()).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+        var logger = new RecordingLogger<GoogleLoginHandler>();
+        var result = await Handler(validator, users, new ThrowingEmailSender(), logger).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
 
         // A dead mail server must not cost someone their first sign-in.
         Assert.True(result.IsSuccess);
         Assert.Single(users.Store);
+
+        var logged = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, logged.Level);
+        Assert.NotNull(logged.Error);
 
         // The response carries the whole session the SPA stores.
         var auth = result.Value!;

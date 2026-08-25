@@ -216,11 +216,27 @@ public class OrderStateMachineTests
     [Fact]
     public void An_order_number_is_dated_and_short_enough_to_read_out()
     {
-        var id = Guid.Parse("a1b2c3d4-0000-0000-0000-000000000000");
+        var id = Guid.Parse("a1b2c3d4-e5f6-0000-0000-000000000000");
 
         var number = OrderDraft.NumberFor(new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero), id);
 
-        Assert.Equal("WW-20260501-A1B2C3", number);
+        Assert.Equal("WW-20260501-A1B2C3D4E5", number);
+    }
+
+    [Fact]
+    public void An_order_number_carries_enough_of_the_id_to_make_a_collision_negligible()
+    {
+        var number = OrderDraft.NumberFor(
+            new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
+            Guid.NewGuid());
+
+        // order_number is uniquely indexed, so a collision is a failed checkout rather than a leak,
+        // and collisions arrive by the birthday bound. Ten hex characters is 40 bits; six was 24,
+        // which is a coin flip at about five thousand orders in one day. This pins the width so it
+        // cannot be shortened back for tidiness.
+        var suffix = number.Split('-')[2];
+        Assert.Equal(10, suffix.Length);
+        Assert.Equal(suffix.ToUpperInvariant(), suffix);
     }
 
     [Fact]

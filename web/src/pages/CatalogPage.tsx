@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type { Paged, WidgetView } from '../api/types'
 import { pseudoRating } from '../lib/img'
 import { CATEGORIES, FREE_SHIPPING_THRESHOLD, PAGE_SIZE, SORTS, categoryBySlug, refine } from '../lib/catalog'
+import { CategoryIcon } from '../components/CategoryIcon'
 import { AddToCartButton } from '../components/AddToCartButton'
 import { ProductImage } from '../components/ProductImage'
 import { Price } from '../components/Price'
@@ -112,7 +113,7 @@ export function CatalogPage() {
           <nav className="shortcuts" aria-label="Shop by category">
             {CATEGORIES.filter((c) => c.slug).map((c) => (
               <Link key={c.slug} to={`/store?cat=${c.slug}`} className="shortcut">
-                <span className="ico" aria-hidden="true">{c.icon}</span>
+                <span className="ico" aria-hidden="true"><CategoryIcon name={c.icon} /></span>
                 <span className="lbl">{c.label}</span>
               </Link>
             ))}

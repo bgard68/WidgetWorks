@@ -1,11 +1,14 @@
 // Product imagery + light cosmetic rating for the storefront.
-// If a widget has no imageUrl, fall back to a deterministic sample photo (picsum,
-// seeded by SKU) so the grid always looks like a real store. Real product images
-// set on the widget (admin) take precedence.
+// If a widget has no imageUrl, fall back to the bundled illustration for its
+// SKU (web/public/products) so the grid needs no external image service and
+// renders offline. Real product images set on the widget (admin) take
+// precedence; SKUs without bespoke art share a generic widget illustration.
+const ILLUSTRATED_SKUS = new Set(['ww-001', 'ww-002', 'ww-003', 'ww-004', 'ww-005'])
+
 export function productImage(w: { sku: string; imageUrl?: string | null }): string {
   if (w.imageUrl && w.imageUrl.trim()) return w.imageUrl
-  const seed = encodeURIComponent((w.sku || 'widget').toLowerCase())
-  return `https://picsum.photos/seed/ww-${seed}/600/450`
+  const sku = (w.sku || '').toLowerCase()
+  return ILLUSTRATED_SKUS.has(sku) ? `/products/${sku}.svg` : '/products/widget.svg'
 }
 
 // Deterministic, cosmetic star rating derived from the SKU. Placeholder visuals

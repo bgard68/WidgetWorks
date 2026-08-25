@@ -13,12 +13,12 @@ describe('ProductImage', () => {
     expect(screen.getByRole('img', { name: 'Standard Widget' })).toHaveAttribute('src', 'https://cdn.example/widget.jpg')
   })
 
-  it('falls back to a deterministic sample photo when no url is set', () => {
+  it('falls back to the bundled illustration when no url is set', () => {
     render(<ProductImage sku="WW-001" imageUrl={null} alt="Standard Widget" />)
 
     expect(screen.getByRole('img', { name: 'Standard Widget' })).toHaveAttribute(
       'src',
-      expect.stringContaining('picsum.photos/seed/ww-ww-001'),
+      '/products/ww-001.svg',
     )
   })
 

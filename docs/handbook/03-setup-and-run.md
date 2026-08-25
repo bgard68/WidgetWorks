@@ -101,8 +101,8 @@ values and why.
   you’re almost certainly not in the Development environment (so user-secrets didn’t
   load). Confirm `launchSettings.json` is present, or run
   `dotnet run --environment Development`.
-- **Product images blank** — the sample photos come from an external service (picsum);
-  it just needs internet. Everything else works offline.
+- **Product images** are bundled SVG illustrations served by the web app itself, so they
+  work offline. Only an admin-set image URL loads from elsewhere.
 - **No email in Mailpit** — check `Email__Provider=Smtp`, `Email__Host=mailpit`,
   `Email__Port=1025`, and **`Email__UseStartTls=false`**. Port 1025 is plain SMTP; leaving
   STARTTLS on is the usual reason nothing arrives. Full recipe in

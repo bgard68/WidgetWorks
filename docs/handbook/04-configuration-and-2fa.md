@@ -128,6 +128,27 @@ There is deliberately **no global limiter**: a catalogue page issues several req
 a global cap would throttle ordinary browsing while adding nothing an endpoint policy does not
 already do.
 
+### The counters are per-instance, and that is a deployment constraint
+
+Throttling state lives in the serving process's memory. That is exactly right on the **F1 tier**,
+which runs a single instance — there is one counter table and it is the whole picture.
+
+It stops being right the moment a second instance exists. Each one keeps its own counters and
+enforces the configured budget separately, so two instances allow **twice** the configured limit,
+four allow four times. Nothing errors and nothing is logged; the numbers in `appsettings.json`
+simply stop being the numbers in effect.
+
+`ScaleOutCheck` warns once at startup when `WEBSITE_SKU` names a tier that *can* run more than one
+instance (anything other than `Free` or `Shared`). It reports capability rather than actual instance
+count, because no instance can see how many siblings it has — and on an autoscaling plan the second
+one can arrive at any moment, by which time the limits are already wrong.
+
+Before scaling out, move the counters to a store the instances share. `Azure Cache for Redis` is the
+usual choice; note it has no free tier, which is why this application does not use one today. The
+database is **not** a substitute: counters are written on every request, including rejected ones, so
+a serverless database would be billed for compute in proportion to the abuse the limiter exists to
+absorb.
+
 ## Reclaiming stock from unfinished payments
 
 An order whose payment settles asynchronously holds its stock while it waits for a provider webhook.

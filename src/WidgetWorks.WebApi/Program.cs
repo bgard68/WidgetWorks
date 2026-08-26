@@ -132,6 +132,13 @@ else
         migration.Error);
 }
 
+// Once at startup: the throttling budgets are per-instance, so a tier that can run several of them
+// silently multiplies every limit. Checked here rather than assumed in a comment, because the
+// failure has no symptom — the limits just stop meaning what appsettings.json says.
+ScaleOutCheck.Inspect(
+    Environment.GetEnvironmentVariable("WEBSITE_SKU"),
+    warning => app.Logger.LogWarning("{Message}", warning));
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

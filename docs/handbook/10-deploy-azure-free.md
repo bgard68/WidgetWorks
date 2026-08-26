@@ -264,8 +264,27 @@ az webapp config appsettings set --name $APP --resource-group $RG --settings \
   Jwt__Issuer="https://$APP.azurewebsites.net" \
   Jwt__Audience="widgetworks-spa" \
   Payments__Provider="Mock" \
-  Email__Provider="Dev"
+  Email__Provider="Dev" \
+  RateLimiting__TrustForwardedFor="true"
 ```
+
+`RateLimiting__TrustForwardedFor` is not optional here. App Service is a reverse proxy, so every
+request reaches the app carrying the *proxy's* address. Left `false`, every caller in the world
+collapses into a single throttling partition and the per-caller limits become a global cap that the
+first busy minute trips for everybody. The app logs a warning once when the setting and the traffic
+disagree — if you see it, this is the line you missed. See
+[throttling](04-configuration-and-2fa.md#throttling-and-the-one-setting-that-can-cause-an-outage).
+
+**Health probe.** On Basic or higher, point the platform at readiness rather than liveness:
+
+```bash
+az webapp config set --name $APP --resource-group $RG --health-check-path /health/ready
+```
+
+Health check is unavailable on **F1/Free** — the setting simply will not apply. There, use an
+external monitor (or a scheduled workflow) against `/health/ready` every 30–60 minutes. Not more
+often: readiness queries the database, and waking it on the keep-warm cadence is exactly the cost
+`/health` exists to avoid.
 
 Verify every reference resolved — a broken one shows an error instead of `Resolved`:
 

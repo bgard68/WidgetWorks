@@ -353,12 +353,41 @@ Write-Ok "SPA deployed to $SwaUrl"
 # ---------------------------------------------------------- 10. CORS loop ----
 # Named origin, never a wildcard - the app sends credentials. App__BaseUrl is what password-reset
 # emails build their links from; left at localhost it sends customers to their own machine.
-Write-Step 'Wiring CORS and email links'
+#
+# RateLimiting__TrustForwardedFor rides along here, in the block that runs on every provision,
+# rather than in section 6 which -SkipInfra skips. It is a correctness setting, not an
+# infrastructure one: App Service is a reverse proxy, so every request reaches the app carrying
+# the proxy's address. Left false, all callers collapse into one throttling partition and the
+# per-caller limits become a global cap that the first busy minute trips for everybody. The app
+# logs a warning when the setting and the traffic disagree, but a provision run should not
+# produce an environment that needs the warning.
+Write-Step 'Wiring CORS, email links, and proxy-aware throttling'
 Set-AppSettings -App $AppName -Group $ResourceGroup -Settings @{
-    'Cors__AllowedOrigins' = $SwaUrl
-    'App__BaseUrl'         = $SwaUrl
+    'Cors__AllowedOrigins'                = $SwaUrl
+    'App__BaseUrl'                        = $SwaUrl
+    'RateLimiting__TrustForwardedFor'     = 'true'
 }
 Write-Ok 'Set'
+
+# ------------------------------------------------------- 11. health probe ----
+# /health is liveness and deliberately does not touch the database - the keep-warm schedule pings
+# it every few minutes, and waking a serverless database on that cadence would cost far more than
+# the free allowance. /health/ready is the one that answers "can this instance actually serve",
+# so that is what the platform should watch.
+#
+# Health check needs Basic or higher; on the F1 free tier the setting does not apply. Rather than
+# fail a free-tier provision, say so and point at the substitute.
+Write-Step 'Health check path'
+if ($Sku -eq 'F1' -or $Sku -eq 'D1') {
+    Write-Warn "Health check is not available on the $Sku tier - skipping."
+    Write-Host '      Substitute: point an external monitor (or a scheduled workflow) at' -ForegroundColor DarkGray
+    Write-Host "      $ApiUrl/health/ready on a 30-60 minute interval. Not more often:" -ForegroundColor DarkGray
+    Write-Host '      a readiness check wakes the database, which is what /health avoids.' -ForegroundColor DarkGray
+} else {
+    Invoke-Az webapp config set --name $AppName --resource-group $ResourceGroup `
+        --health-check-path '/health/ready' --output none | Out-Null
+    Write-Ok 'Probing /health/ready (readiness, queries the database)'
+}
 
 Write-Host @"
 

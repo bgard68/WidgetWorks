@@ -11,7 +11,10 @@ namespace WidgetWorks.WebApi.RateLimiting;
 /// The inverse mistake is the security one — trusting the header with no proxy in front lets a
 /// caller forge it and mint a fresh partition per request, opting out of throttling entirely.
 ///
-/// Both are silent, so this watches real traffic and warns once for whichever it sees.
+/// The third is trusting the header correctly but counting the wrong entry of it, which lands back
+/// on the global cap without the setting looking wrong.
+///
+/// All three are silent, so this watches real traffic and warns once for whichever it sees.
 /// </summary>
 public sealed class ProxyConfigurationCheck(RateLimitOptions options, ILogger<ProxyConfigurationCheck> logger)
 {
@@ -43,6 +46,33 @@ public sealed class ProxyConfigurationCheck(RateLimitOptions options, ILogger<Pr
                 "If no proxy is in front, a caller can forge that header and give itself an " +
                 "unlimited number of throttling partitions. Set it false unless a proxy is guaranteed.");
         }
+        else if (forwarded && options.TrustForwardedFor && ChainLength(context) < options.TrustedProxyHops)
+        {
+            // The hop count decides which entry of the chain is believed. Too high and it runs off
+            // the front on every request, each one silently falling back to the connection address —
+            // which is the proxy, so this reproduces the global-cap outage above while the setting
+            // that would explain it reads as correct.
+            WarnOnce(
+                "RateLimiting:TrustedProxyHops is higher than the number of X-Forwarded-For entries " +
+                "arriving, so the caller cannot be identified and every request falls back to the " +
+                "proxy address — throttling all traffic as one caller. Set it to the number of " +
+                "proxies in front of this app (one for Azure App Service).");
+        }
+    }
+
+    /// <summary>Entries in the chain, counted the way <see cref="ClientAddress"/> reads it.</summary>
+    private static int ChainLength(HttpContext context)
+    {
+        var length = 0;
+        foreach (var value in context.Request.Headers["X-Forwarded-For"])
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                length += value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length;
+            }
+        }
+
+        return length;
     }
 
     private void WarnOnce(string message)

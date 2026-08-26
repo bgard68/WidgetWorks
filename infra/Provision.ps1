@@ -361,6 +361,12 @@ Write-Ok "SPA deployed to $SwaUrl"
 # per-caller limits become a global cap that the first busy minute trips for everybody. The app
 # logs a warning when the setting and the traffic disagree, but a provision run should not
 # produce an environment that needs the warning.
+#
+# RateLimiting__TrustedProxyHops is deliberately NOT set here: it ships as 1 in appsettings.json,
+# which is right for App Service on its own. It decides which entry of X-Forwarded-For is believed,
+# and since a proxy appends rather than replaces, everything left of that entry is caller-supplied.
+# Put a CDN or WAF in front of this app and it must be raised to 2 - otherwise the value read is one
+# hop nearer the caller than it should be.
 Write-Step 'Wiring CORS, email links, and proxy-aware throttling'
 Set-AppSettings -App $AppName -Group $ResourceGroup -Settings @{
     'Cors__AllowedOrigins'                = $SwaUrl

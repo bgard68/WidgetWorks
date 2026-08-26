@@ -16,8 +16,26 @@ public sealed class RateLimitOptions
     /// first busy minute trips for everybody — a self-inflicted outage. Set true only when a proxy
     /// you control is guaranteed to be in front, because a client can otherwise forge the header
     /// and mint itself unlimited partitions.
+    ///
+    /// Setting it true is necessary but not sufficient: which entry of the chain is believed matters
+    /// just as much, and that is <see cref="TrustedProxyHops"/>.
     /// </summary>
     public bool TrustForwardedFor { get; set; }
+
+    /// <summary>
+    /// How many proxies we control sit in front of this app, each appending one entry to
+    /// <c>X-Forwarded-For</c>. One for Azure App Service; two if a CDN or WAF is put in front of it.
+    ///
+    /// This decides *which* entry is believed, and it matters because a proxy appends rather than
+    /// overwrites: whatever the caller sent stays in the header, to the left of it. Counting this
+    /// many entries back from the right lands on one a trusted hop wrote.
+    ///
+    /// Too high and the count runs off the front of the chain, every caller falls back to the proxy's
+    /// own address, and the limiter becomes the global cap described above. Too low and it reads an
+    /// entry nearer the caller's end — far enough, one the caller wrote themselves.
+    /// <see cref="ProxyConfigurationCheck"/> warns when live traffic disagrees with this number.
+    /// </summary>
+    public int TrustedProxyHops { get; set; } = 1;
 
     /// <summary>Sign-in, registration and password-reset requests.</summary>
     public RateLimitBudget Auth { get; set; } = new() { PermitLimit = 20, WindowSeconds = 60 };

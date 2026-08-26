@@ -57,6 +57,7 @@ by policy.
 | `Cors:AllowedOrigins` | Browser origins allowed to call the API | env / appsettings | Not secret. |
 | `App:BaseUrl` | Public SPA URL (used in email links) | env / appsettings | Not secret. |
 | `RateLimiting:TrustForwardedFor` | Whether `X-Forwarded-For` may be believed | env / appsettings | Not secret, but **load-bearing** — see below. |
+| `RateLimiting:TrustedProxyHops` | How many proxies in front append to that header | env / appsettings | Not secret, but **load-bearing** — see below. |
 | `RateLimiting:Auth\|Checkout\|Lookup` | Throttling budgets per caller | env / appsettings | Not secret; tune during an incident without a redeploy. |
 | `Reservations:*` | Stale-reservation sweep window, interval, batch, on/off | env / appsettings | Not secret. |
 | `VITE_API_BASE_URL`, `VITE_GOOGLE_CLIENT_ID` | Web build-time config | GitHub Actions **Variables** (CI) / `web/.env.local` (dev) | Public; injected at build time, never committed. |
@@ -75,6 +76,7 @@ live in `appsettings.json` so they can be tightened during an incident without a
 ```json
 "RateLimiting": {
   "TrustForwardedFor": false,
+  "TrustedProxyHops": 1,
   "Auth":     { "PermitLimit": 20, "WindowSeconds": 60 },
   "Checkout": { "PermitLimit":  8, "WindowSeconds": 60 },
   "Lookup":   { "PermitLimit": 10, "WindowSeconds": 60 }
@@ -95,8 +97,32 @@ header, minting a fresh partition per request and opting out of throttling entir
 | Behind App Service, a load balancer, Cloudflare, any reverse proxy | `true` |
 | Direct to the app, local development, container with no proxy | `false` |
 
-The app watches real traffic and logs a warning **once** when the setting and the traffic disagree,
-in either direction. If you see either warning, the setting is wrong — it is not advisory.
+### `TrustedProxyHops` decides *which* entry is believed, and that is the security half
+
+Turning `TrustForwardedFor` on is necessary but not sufficient. A proxy **appends** to
+`X-Forwarded-For`; it does not replace what arrived. A caller sending `X-Forwarded-For: 9.9.9.9`
+reaches the app as `9.9.9.9, <their real address>`, so the *leftmost* entry — the intuitive reading,
+and the one this app shipped with — is a value the caller chose. Change it per request and you mint
+a fresh partition every time: throttling defeated, with `TrustForwardedFor` correctly set to `true`.
+
+The entry a trusted hop wrote is found by counting from the **right**. With `h` proxies in front,
+the client sits at `count - h`, and everything to its left is caller-supplied and ignored.
+
+| Deployment | `TrustedProxyHops` |
+|---|---|
+| App Service, or any single reverse proxy | `1` |
+| CDN or WAF in front of App Service | `2` |
+
+Set it too high and the count runs off the front of every chain, each request falls back to the
+proxy's own address, and you are back to the global cap above with a setting that reads as correct.
+
+Entries are normalised to a bare address before use, which matters on App Service specifically: it
+appends the client as `ip:port`, and the source port is ephemeral. Left in the key, throttling would
+partition per *connection* rather than per caller — the same hole by a different route.
+
+The app watches real traffic and logs a warning **once** when configuration and traffic disagree —
+header present but untrusted, trusted but no header, or a hop count higher than the chain arriving.
+If you see any of those warnings, the setting is wrong — it is not advisory.
 
 There is deliberately **no global limiter**: a catalogue page issues several requests in a burst, so
 a global cap would throttle ordinary browsing while adding nothing an endpoint policy does not

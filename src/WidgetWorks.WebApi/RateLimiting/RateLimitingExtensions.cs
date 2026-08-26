@@ -67,7 +67,7 @@ public static class RateLimitingExtensions
     {
         var (permits, window) = budget.Resolve();
         return RateLimitPartition.GetFixedWindowLimiter(
-            ClientAddress.Resolve(context, options.TrustForwardedFor),
+            ClientAddress.Resolve(context, options.TrustForwardedFor, options.TrustedProxyHops),
             _ => new FixedWindowRateLimiterOptions { PermitLimit = permits, Window = window });
     }
 }

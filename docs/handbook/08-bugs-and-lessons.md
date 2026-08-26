@@ -15,6 +15,8 @@ Entries 1–11 are from the first phase, 12–32 from the second, and 33–39 fr
 A fourth pass — a security and operability review of the whole application — produced
 40–45, and those have a common shape worth noticing: most are places where a value was
 read, reasoned about, and written back, while something else changed it in between.
+Entry 46 came later still, from re-reading code that had already shipped: a defect held
+in place by a passing test that stated the misconception out loud.
 
 ## Bugs
 
@@ -472,6 +474,16 @@ the column worth reading.
 **Fix** `LogSafe.Text` strips control characters from the path and method, keeping printable oddities
 
 **Lesson** The correlation id on the line beside it *was* sanitised, with a comment citing this exact weakness. Knowing a rule is not the same as applying it everywhere it holds
+
+### 46 · Rate limiting read the one part of the header the attacker controls
+
+**Found by** review of the shipped code, after the throttling work was already merged and deployed
+
+**Cause** `ClientAddress` took the **leftmost** entry of `X-Forwarded-For` as the client. A proxy *appends* to that header, it does not replace it, so a caller sending `X-Forwarded-For: 9.9.9.9` arrives as `9.9.9.9, <real client>` and position zero is whatever they typed. Varying it per request mints a fresh partition every time, which is throttling defeated — with `TrustForwardedFor` correctly set to `true`. A unit test asserted the wrong semantics in so many words (`The_leftmost_entry_in_a_forwarded_chain_is_the_client`), so the defect was pinned by a passing test that described the code accurately
+
+**Fix** Count from the trusted end instead: with `TrustedProxyHops` proxies in front, the client is at `count - hops`, and everything to its left is caller-supplied and ignored. A chain shorter than the hop count falls back to the connection address rather than trusting an entry nearer the caller. Entries are normalised through `IPAddress`/`IPEndPoint`, which drops the `:port` App Service appends — keeping it would have partitioned per connection instead of per caller and reopened the same hole. `ProxyConfigurationCheck` gained a third warning for a hop count higher than the traffic
+
+**Lesson** `TrustForwardedFor` was the setting everyone argued about, and getting it right bought less than it looked like. The trust boundary is not *whether* to read the header — it is *which byte range of it* a proxy actually wrote. A test can hold a misconception in place as firmly as it holds a behaviour, and this one read as a specification while documenting the bug
 
 ## Lessons learned
 

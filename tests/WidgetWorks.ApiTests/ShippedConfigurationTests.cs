@@ -85,6 +85,19 @@ public class ShippedConfigurationTests
     }
 
     [Fact]
+    public void The_trusted_hop_count_is_written_down_because_it_decides_which_entry_is_believed()
+    {
+        var shipped = Section("RateLimiting");
+
+        // TrustForwardedFor on its own is not enough. A proxy appends to the header rather than
+        // replacing it, so which entry gets read has to be counted from the trusted end — and an
+        // operator cannot get that right for their own topology if the setting is invisible.
+        // One matches the deployment target: App Service, with nothing in front of it.
+        Assert.Equal(new RateLimitOptions().TrustedProxyHops, Number(shipped, "TrustedProxyHops"));
+        Assert.Equal(1, new RateLimitOptions().TrustedProxyHops);
+    }
+
+    [Fact]
     public void The_reservation_sweep_settings_in_the_file_match_the_code_defaults()
     {
         var shipped = Section("Reservations");

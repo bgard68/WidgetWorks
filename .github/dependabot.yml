@@ -22,7 +22,6 @@ updates:
     labels: ["dependencies", "dotnet"]
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       # One grouped pull request for minor and patch, matching what the
       # production/development pair was reaching for without dependency-type.
@@ -54,7 +53,6 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(dev-deps)"
-      include: "scope"
     groups:
       npm-production:
         applies-to: version-updates
@@ -77,7 +75,6 @@ updates:
     labels: ["dependencies", "ci"]
     commit-message:
       prefix: "ci(deps)"
-      include: "scope"
     groups:
       # Groups are matched in order; these must come before the catch-all.
       # Both families are version-locked across call sites, so a split PR
@@ -102,7 +99,6 @@ updates:
     labels: ["dependencies", "docker"]
     commit-message:
       prefix: "build(docker)"
-      include: "scope"
     groups:
       docker-all:
         patterns: ["*"]

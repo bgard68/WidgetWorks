@@ -16,7 +16,9 @@ A fourth pass — a security and operability review of the whole application —
 40–45, and those have a common shape worth noticing: most are places where a value was
 read, reasoned about, and written back, while something else changed it in between.
 Entry 46 came later still, from re-reading code that had already shipped: a defect held
-in place by a passing test that stated the misconception out loud.
+in place by a passing test that stated the misconception out loud. Entry 47 is not code
+at all — a configuration file silently rejected for three weeks, during which every fix
+written into it did nothing.
 
 ## Bugs
 
@@ -485,6 +487,17 @@ the column worth reading.
 
 **Lesson** `TrustForwardedFor` was the setting everyone argued about, and getting it right bought less than it looked like. The trust boundary is not *whether* to read the header — it is *which byte range of it* a proxy actually wrote. A test can hold a misconception in place as firmly as it holds a behaviour, and this one read as a specification while documenting the bug
 
+### 47 · A config file was rejected for three weeks and said nothing
+
+**Found by** the same unmergeable pair of pull requests arriving four Mondays running. The tell was in Dependabot's own titles, which kept naming a group — `dotnet-minor-patch` — that this file had stopped declaring three weeks earlier
+
+**Cause** `versioning-strategy`, `commit-message.prefix-development`, and a group `dependency-type` were added to the **NuGet** block on 2026-08-07. All three are documented for ecosystems that distinguish production from development dependencies — `bundler`, `composer`, `mix`, `maven`, `npm`, `pip` — and NuGet does not. One invalid key rejects the **whole file**, not the block containing it, and rejection is not a stop: Dependabot falls back to the last version that parsed and keeps running from it, reporting nothing. Every edit after that date was inert, including the `codeql-action` grouping added on 08-24 for the express purpose of stopping `init` and `analyze` arriving as two pull requests that each fail with `Loaded a configuration file for version X, but running version Y`. That fix was correct, and carried a comment naming the exact failure it prevented, and never ran once
+
+**Fix** Dropped the three keys from the NuGet block — npm keeps them, npm has the split. Then `scripts/check-dependabot-config.py` and a weekly workflow that compares the group names this file declares against the ones Dependabot actually emits, failing when they disagree. Replayed against this incident it fires on the first Monday rather than the fourth
+
+**Lesson** GitHub *does* fail the `.github/dependabot.yml` check on a pull request that introduces an invalid file, so the way in is guarded. What nothing watched was the state afterwards: that check only runs on pull requests touching the file, so once a bad config reaches `main` it is never re-examined. A file consumed by someone else's service has no compiler and no test — the only evidence it is live is the behaviour it is supposed to produce. The symptom was repaired by hand four times, and each time this file was re-read and pronounced fine, because reading it was never evidence
+
+
 ## Lessons learned
 
 - **Treat CI as the compiler.** With no local SDK, `build -warnaserror` + `test` on every
@@ -564,3 +577,8 @@ the column worth reading.
 - **Some invariants only exist in the database.** Atomic stock reservation cannot be
   demonstrated by any in-memory double; it needs concurrent connections to a real server.
   Where the rule lives decides what kind of test can prove it.
+- **Configuration a service consumes needs an output check, not a review.** A rejected
+  `dependabot.yml` does not fail loudly — the service keeps running the last version that
+  parsed. The file read correctly throughout, including a fix written for the very symptom
+  being repaired by hand each week. Compare what the config *declares* against what the
+  service *emits*, and fail when they disagree.

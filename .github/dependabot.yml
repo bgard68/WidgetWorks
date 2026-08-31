@@ -4,26 +4,31 @@ version: 2
 
 updates:
   # ---- .NET / NuGet (solution root) ----
+  # Dependabot has no production/development split for NuGet, so the options that
+  # depend on one are rejected here: commit-message.prefix-development and
+  # groups.*.dependency-type are documented for bundler, composer, mix, maven,
+  # npm and pip only. They were added on 2026-08-07 together with
+  # versioning-strategy and invalidated the whole file, not just this block --
+  # Dependabot fell back to the last configuration that parsed and stayed there,
+  # which is why the codeql-action grouping added on 2026-08-24 never took effect
+  # and init/analyze kept arriving as split, unmergeable pull requests.
+  # Keep this block to options NuGet actually supports.
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 10
-    versioning-strategy: increase
     labels: ["dependencies", "dotnet"]
     commit-message:
       prefix: "chore(deps)"
-      prefix-development: "chore(dev-deps)"
       include: "scope"
     groups:
-      dotnet-production:
+      # One grouped pull request for minor and patch, matching what the
+      # production/development pair was reaching for without dependency-type.
+      dotnet-version-updates:
         applies-to: version-updates
-        dependency-type: production
-        update-types: ["minor", "patch"]
-      dotnet-development:
-        applies-to: version-updates
-        dependency-type: development
+        patterns: ["*"]
         update-types: ["minor", "patch"]
       dotnet-security:
         applies-to: security-updates

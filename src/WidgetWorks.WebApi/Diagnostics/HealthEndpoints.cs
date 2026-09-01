@@ -22,7 +22,9 @@ public static class HealthEndpoints
         // That ping is why this must not touch the database. Waking a serverless database on every
         // warm-up would hold a metered resource awake around the clock — roughly 180 CU-hrs against
         // a 100 CU-hr monthly budget. Warm the app, let the database sleep.
-        routes.MapGet("/health", (TimeProvider clock) => migrationSucceeded
+        // GET *and* HEAD: the keep-warm monitor and most platform probes default to HEAD, and a
+        // liveness endpoint that answers 405 to the probe watching it cannot report bad news.
+        routes.MapMethods("/health", new[] { "GET", "HEAD" }, (TimeProvider clock) => migrationSucceeded
             ? Results.Ok(new { status = "ok", utcNow = clock.GetUtcNow() })
             : Results.Json(
                 new { status = "unhealthy", reason = "database migration failed", detail = migrationError, utcNow = clock.GetUtcNow() },

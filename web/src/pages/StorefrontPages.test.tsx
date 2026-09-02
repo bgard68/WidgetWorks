@@ -131,6 +131,30 @@ describe('CatalogPage', () => {
     await waitFor(() => expect(calls.some((c) => c.url.includes('category=mega'))).toBe(true))
   })
 
+  it('falls back to the first page when the URL carries a page number it cannot use', async () => {
+    const calls = stubFetch([['/catalog/widgets', paged()]])
+
+    // A hand-edited or truncated link. Number('') is 0 and Number('abc') is NaN; both have to
+    // land on page 1 rather than asking the API for page 0 or page NaN.
+    renderWithProviders(<CatalogPage />, { at: '/store?page=abc', path: '/store' })
+    await screen.findByText('Standard Widget')
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('page=1'))).toBe(true))
+    expect(calls.some((c) => /page=(0|NaN|abc)/.test(c.url))).toBe(false)
+  })
+
+  it('ignores a category slug that is not one of ours', async () => {
+    const calls = stubFetch([['/catalog/widgets', paged()]])
+
+    // An unknown slug has no keyword to narrow by, so the request must go out unnarrowed
+    // rather than carrying `category=` and matching nothing.
+    renderWithProviders(<CatalogPage />, { at: '/store?cat=sprockets', path: '/store' })
+    await screen.findByText('Standard Widget')
+
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+    expect(calls.some((c) => c.url.includes('category='))).toBe(false)
+  })
+
   it('shows no pager when everything fits on one page', async () => {
     stubFetch([['/catalog/widgets', paged()]])
 

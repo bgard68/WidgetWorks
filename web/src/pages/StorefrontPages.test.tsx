@@ -155,6 +155,18 @@ describe('CatalogPage', () => {
     expect(calls.some((c) => c.url.includes('category='))).toBe(false)
   })
 
+  it('sends no sort when the URL carries an empty one', async () => {
+    const calls = stubFetch([['/catalog/widgets', paged()]])
+
+    // `?sort=` reads back as '' rather than null, so the `?? 'featured'` default does not fire.
+    // The request has to go out without a sort rather than carrying `sort=` for the API to reject.
+    renderWithProviders(<CatalogPage />, { at: '/store?sort=', path: '/store' })
+    await screen.findByText('Standard Widget')
+
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+    expect(calls.some((c) => c.url.includes('sort='))).toBe(false)
+  })
+
   it('shows no pager when everything fits on one page', async () => {
     stubFetch([['/catalog/widgets', paged()]])
 

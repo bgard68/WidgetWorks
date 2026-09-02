@@ -29,6 +29,7 @@ export function ConfirmDialog({
 
   useEffect(() => {
     const dialog = ref.current
+    /* v8 ignore next -- the effect runs after render, so the ref is always attached */
     if (!dialog) return
     if (open && !dialog.open) dialog.showModal()
     if (!open && dialog.open) dialog.close()

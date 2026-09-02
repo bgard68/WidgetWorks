@@ -147,6 +147,19 @@ public sealed class DbSeeder(IDbConnectionFactory factory, IPasswordHasher hashe
             });
     }
 
+    /// <summary>
+    /// Stocks the demo catalog, inserting only the SKUs that are missing.
+    ///
+    /// Insert-only is deliberate: a restart must not overwrite a name, price or description an
+    /// administrator edited. The consequence is that changing the content of a SKU already in
+    /// DemoWidgets does not reach a database that has it -- the row keeps whatever it was first
+    /// inserted with. Two renames were stranded that way before anyone noticed, because the row
+    /// count stayed right while a quarter of the names went stale.
+    ///
+    /// So: adding a SKU here is enough. **Changing the name, description or price of an existing
+    /// SKU also needs a migration** to carry the correction to databases that already have it --
+    /// see 0012_RealignDemoCatalog.sql.
+    /// </summary>
     private async Task SeedWidgetsAsync(CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);

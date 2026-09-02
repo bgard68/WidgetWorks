@@ -18,7 +18,8 @@ read, reasoned about, and written back, while something else changed it in betwe
 Entry 46 came later still, from re-reading code that had already shipped: a defect held
 in place by a passing test that stated the misconception out loud. Entry 47 is not code
 at all — a configuration file silently rejected for three weeks, during which every fix
-written into it did nothing.
+written into it did nothing. Entry 48 came from comparing a running storefront against the
+code that seeded it.
 
 ## Bugs
 
@@ -498,6 +499,17 @@ the column worth reading.
 **Lesson** GitHub *does* fail the `.github/dependabot.yml` check on a pull request that introduces an invalid file, so the way in is guarded. What nothing watched was the state afterwards: that check only runs on pull requests touching the file, so once a bad config reaches `main` it is never re-examined. A file consumed by someone else's service has no compiler and no test — the only evidence it is live is the behaviour it is supposed to produce. The symptom was repaired by hand four times, and each time this file was re-read and pronounced fine, because reading it was never evidence
 
 
+### 48 · A third of the catalog kept names the code had renamed twice
+
+**Found by** reading the deployed storefront next to the seed that is supposed to fill it. The grid showed `Deluxe Widget Block` where `DbSeeder` says `Deluxe Widget Block Fuchsia`, the Fuchsia variants were missing from an otherwise alphabetical run, and `Widget Pro Kit` appeared twice. The product count was right — 75, exactly what the seed defines — which is why nothing had looked wrong
+
+**Cause** `SeedWidgetsAsync` inserts a demo widget only when its SKU is absent and never updates one. That rule is correct on its own terms: a restart must not overwrite a name or price an administrator edited. What it also means is that changing the content of a SKU already in `DemoWidgets` never reaches a database that has it, and two rounds of renaming had been stranded that way. WW-006..WW-025 were one round behind, still missing the finish that now distinguishes three variants of each shape. WW-001..WW-005 were worse: they still held the five original products from the very first seed, and those five SKUs had since been reassigned to entirely different products, so name, description **and** price all described the wrong item — WW-003 offered a $12.99 Standard Widget Valve at $49.99, and WW-005 carried the name `Widget Pro Kit` already held by WW-021
+
+**Fix** `0012_RealignDemoCatalog.sql` corrects the 25 rows by SKU, once, and only the fields the seeder owns — quantities are left alone, because stock moves with orders and forcing it back to a seed figure could put `quantity_on_hand` below `quantity_reserved` and fail `ck_widgets_reserved_range`. `SeedWidgetsAsync` now documents the rule it implies: adding a SKU is enough, changing an existing one also needs a migration. Two integration tests execute the shipped embedded script rather than a copy, one proving a stale row is corrected and one proving stock survives and a second run is a no-op
+
+**Lesson** An insert-if-missing seed is a one-way door. After its first run the code stops being the source of truth for anything already inserted, and every later edit to that data is a statement about new databases only. The row count is what hides it: nothing is missing, nothing is duplicated, the totals reconcile against the seed perfectly — and totals are what gets checked. Content is not counted. The evidence that a seed is live is the *content* of the rows it claims to own, and the only way to see it was to read the running site against the code
+
+
 ## Lessons learned
 
 - **Treat CI as the compiler.** With no local SDK, `build -warnaserror` + `test` on every
@@ -582,3 +594,7 @@ the column worth reading.
   parsed. The file read correctly throughout, including a fix written for the very symptom
   being repaired by hand each week. Compare what the config *declares* against what the
   service *emits*, and fail when they disagree.
+- **An insert-if-missing seed only speaks to empty databases.** Skipping a row that exists
+  protects an operator's edits and freezes everything else. The count stays right while the
+  content goes stale, so reconcile what the seed *says* against what the deployment *serves*,
+  and carry corrections to existing rows in a migration.

@@ -41,6 +41,7 @@ export function AdminOrderPage() {
   }
 
   async function setStatus(status: string) {
+    /* v8 ignore next -- the buttons that call this only render in the branch where an order loaded */
     if (!order) return
     setError(null)
     setBusy(true)

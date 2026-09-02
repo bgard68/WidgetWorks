@@ -73,6 +73,7 @@ function tryRefresh(): Promise<boolean> {
 
 async function runRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken()
+  /* v8 ignore next -- the only caller checks getRefreshToken() first; kept as defence in depth on an auth path */
   if (!refreshToken) return false
   const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
     method: 'POST',

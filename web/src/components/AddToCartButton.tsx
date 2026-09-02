@@ -33,6 +33,7 @@ export function AddToCartButton({
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
   async function click() {
+    /* v8 ignore next -- the button is disabled while busy, so a second click cannot arrive */
     if (phase === 'busy') return
     setPhase('busy')
     setMessage(null)

@@ -84,6 +84,7 @@ export function AdminWidgetsPage() {
   // A widget with order history can't be removed outright — order_items still
   // references it — so the API archives it instead and tells us which happened.
   async function confirmDelete() {
+    /* v8 ignore next -- the dialog is open={target !== null}, so confirming implies a target */
     if (!target) return
     setDeleting(true)
     setError(null)

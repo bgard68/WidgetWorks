@@ -65,7 +65,9 @@ export function CheckoutPage() {
 
   async function placeOrder(e: React.FormEvent) {
     e.preventDefault()
+    /* v8 ignore next -- an empty cart returns above, so a cart id always exists by here */
     if (!cartId) return
+    /* v8 ignore next -- method is only ever set from PAY_METHODS, so the lookup always matches */
     const paymentToken = PAY_METHODS.find((m) => m.id === method)?.token ?? 'tok_visa_ok'
     setBusy(true)
     setError(null)

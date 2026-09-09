@@ -139,10 +139,38 @@ if (-not $SkipInfra) {
     $VaultId  = (Invoke-Az keyvault show --name $VaultName --query id -o tsv)
     $VaultUri = ((Invoke-Az keyvault show --name $VaultName --query properties.vaultUri -o tsv)).TrimEnd('/')
 
-    $Me = (Invoke-Az ad signed-in-user show --query id -o tsv)
+    # Grant the operator Secrets Officer so the secret writes below can succeed: Contributor on
+    # the vault does not include reading or writing secret VALUES under RBAC.
+    #
+    # 'signed-in-user' only resolves for a human. Run as a service principal it returns nothing,
+    # and the previous version passed that empty id straight into the role assignment with its
+    # failure swallowed by '2>&1 | Out-Null' -- so the grant silently did not happen and the
+    # script failed later, at the secret writes, pointing at the wrong thing. Resolve the caller
+    # whichever kind it is, and if the grant cannot be made, say so here rather than three steps
+    # downstream.
+    $Me = & az ad signed-in-user show --query id -o tsv 2>$null
+    $PrincipalType = 'User'
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Me)) {
+        # Service principal (CI): fall back to the identity the CLI is actually authenticated as.
+        $Me = & az account show --query user.name -o tsv 2>$null
+        if (-not [string]::IsNullOrWhiteSpace($Me)) {
+            $Me = & az ad sp show --id $Me --query id -o tsv 2>$null
+        }
+        $PrincipalType = 'ServicePrincipal'
+    }
+    if ([string]::IsNullOrWhiteSpace($Me)) {
+        throw "Could not resolve the caller's object id, so 'Key Vault Secrets Officer' cannot be granted on $VaultName. Grant it manually and re-run with -SkipInfra, or sign in as a user."
+    }
     & az role assignment create --role 'Key Vault Secrets Officer' --assignee-object-id $Me `
-        --assignee-principal-type User --scope $VaultId --output none 2>&1 | Out-Null
-    Write-Ok 'Vault ready (RBAC, purge protection, you have Secrets Officer)'
+        --assignee-principal-type $PrincipalType --scope $VaultId --output none 2>&1 | Out-Null
+    # Role assignment is idempotent-ish: it returns non-zero when the assignment already exists.
+    # Verify the end state instead of trusting the exit code either way.
+    $hasRole = & az role assignment list --assignee $Me --scope $VaultId `
+        --query "[?roleDefinitionName=='Key Vault Secrets Officer'] | length(@)" -o tsv 2>$null
+    if ($hasRole -eq '0' -or [string]::IsNullOrWhiteSpace($hasRole)) {
+        throw "'Key Vault Secrets Officer' is not present on $VaultName for $Me. The secret writes below would fail; grant it and re-run."
+    }
+    Write-Ok "Vault ready (RBAC, purge protection, $PrincipalType has Secrets Officer)"
 
     # ---------------------------------------------------------- 3. secrets --
     # Written from a temp file so no value reaches the command line or shell history.

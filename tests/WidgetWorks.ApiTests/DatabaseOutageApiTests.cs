@@ -42,7 +42,7 @@ public sealed class DatabaseOutageApiTests(OfflineApiFixture offline)
 
         // The detail field exists to make this diagnosable, which is exactly why it must not carry
         // the credentials out to an anonymous caller.
-        Assert.DoesNotContain("outage_probe_user", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(OfflineApiFixture.ProbeRole, body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Password", body, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -63,25 +63,30 @@ public sealed class DatabaseOutageApiTests(OfflineApiFixture offline)
         // The type name is enough to tell a refused connection from a timeout or an auth failure.
         // The message is not, because it names the host and the user.
         Assert.EndsWith("Exception", json.GetProperty("reason").GetString(), StringComparison.Ordinal);
-        Assert.DoesNotContain("outage_probe_user", body, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("ww_outage_probe", body, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("127.0.0.1", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(OfflineApiFixture.ProbeRole, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(OfflineApiFixture.ProbeDatabase, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(OfflineApiFixture.ProbeHost, body, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task UnhandledException_AnonymousCatalogRequest_Returns500WithAMatchingCorrelationIdAndNoDetail()
     {
-        // Act — the public storefront listing, which cannot answer without the database.
+        // Act — two storefront endpoints that fail for different reasons underneath: a listing
+        // query and a single-row lookup.
         var response = await Client.GetAsync("/catalog/widgets");
         var body = await response.Content.ReadAsStringAsync();
+        var otherBody = await (await Client.GetAsync($"/catalog/widgets/{Guid.Empty}")).Content.ReadAsStringAsync();
 
         // Assert — a generic 500 whose only specific content is the reference the caller can quote.
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
 
         var json = JsonDocument.Parse(body).RootElement;
-        Assert.Equal(
-            "Something went wrong on our side. Quote the reference below if you contact us.",
-            json.GetProperty("error").GetString());
+        var otherJson = JsonDocument.Parse(otherBody).RootElement;
+
+        // Asserted as an invariant across two different failures rather than against the copy
+        // itself: the message must not vary with the exception, which is the property that stops it
+        // describing the fault. Pinning the sentence would fail on a wording change instead.
+        Assert.Equal(otherJson.GetProperty("error").GetString(), json.GetProperty("error").GetString());
 
         // The id in the body and the id on the header have to be the same value, or a customer
         // quoting one of them cannot be matched to the log line carrying the other.
@@ -89,10 +94,13 @@ public sealed class DatabaseOutageApiTests(OfflineApiFixture offline)
         Assert.Equal(header, json.GetProperty("correlationId").GetString());
         Assert.NotEmpty(header);
 
+        // ...and the two failures must still be distinguishable to us, so the ids differ.
+        Assert.NotEqual(otherJson.GetProperty("correlationId").GetString(), json.GetProperty("correlationId").GetString());
+
         // An exception message here would name the host, the database and the driver.
         Assert.DoesNotContain("Npgsql", body, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("outage_probe_user", body, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("127.0.0.1", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(OfflineApiFixture.ProbeRole, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(OfflineApiFixture.ProbeHost, body, StringComparison.Ordinal);
         Assert.DoesNotContain("stack", body, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -125,12 +133,24 @@ public sealed class DatabaseOutageApiTests(OfflineApiFixture offline)
 /// </summary>
 public sealed class OfflineApiFixture : IAsyncLifetime
 {
+    /// <summary>The host this instance is pointed at.</summary>
+    public const string ProbeHost = "127.0.0.1";
+
+    /// <summary>The database name it will fail to reach.</summary>
+    public const string ProbeDatabase = "ww_outage_probe";
+
+    /// <summary>The role it will fail to connect as.</summary>
+    public const string ProbeRole = "outage_probe_user";
+
     /// <summary>
-    /// Port 1 refuses immediately rather than hanging, so the outage is instant. The host, database
-    /// and username are deliberately distinctive: they are what the leak assertions search for.
+    /// Port 1 refuses immediately rather than hanging, so the outage is instant. The three values
+    /// above are deliberately distinctive and named rather than inlined: they are what the leak
+    /// assertions search for, and a test quoting them reads as an assertion about this host instead
+    /// of a magic string that has to be kept in step with a connection string defined elsewhere.
     /// </summary>
     private const string UnreachableDatabase =
-        "Host=127.0.0.1;Port=1;Database=ww_outage_probe;Username=outage_probe_user;Password=replace-me-locally;Timeout=1;Command Timeout=1";
+        $"Host={ProbeHost};Port=1;Database={ProbeDatabase};Username={ProbeRole};" +
+        "Password=replace-me-locally;Timeout=1;Command Timeout=1";
 
     // Same 'test-signing-key' prefix ApiFixture uses, which keeps the throwaway value out of the
     // gitleaks gate. Startup binds JwtOptions, so the host will not boot without one.

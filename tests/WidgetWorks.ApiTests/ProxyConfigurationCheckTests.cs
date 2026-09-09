@@ -102,7 +102,7 @@ public class ProxyConfigurationCheckTests
     }
 
     [Fact]
-    public void Warns_when_more_proxy_hops_are_trusted_than_actually_arrive()
+    public void Inspect_MoreHopsTrustedThanArrive_WarnsThatCallersCannotBeIdentified()
     {
         var log = new CapturingLogger();
         var check = new ProxyConfigurationCheck(
@@ -118,7 +118,7 @@ public class ProxyConfigurationCheckTests
     }
 
     [Fact]
-    public void Stays_quiet_when_the_chain_is_as_long_as_the_trusted_hop_count()
+    public void Inspect_ChainAsLongAsTheTrustedHopCount_StaysQuiet()
     {
         var log = new CapturingLogger();
         var check = new ProxyConfigurationCheck(

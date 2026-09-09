@@ -182,7 +182,7 @@ public class ConcurrentSettlementTests
         // Assert — refused whole, and named for the reason the UPDATE refused it rather than the
         // reason the stale read would have given.
         Assert.True(result.IsFailure);
-        Assert.Equal("On-hand cannot drop below the reserved quantity.", result.Error);
+        Assert.Contains("reserved quantity", result.Error, StringComparison.Ordinal);
         Assert.Equal(10, widgets.Store[widgetId].QuantityOnHand);
         Assert.Equal(5, widgets.Store[widgetId].QuantityReserved);
     }

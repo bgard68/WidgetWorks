@@ -60,6 +60,13 @@ public class CatalogSortTests(PostgresFixture db)
             new WidgetQuery(tag, ActiveOnly: true, Page: 1, PageSize: 20, Category: null, Sort: sort),
             CancellationToken.None);
 
+    /// <summary>
+    /// The names a known sort returns, so a fallback test can assert "same as the default" without
+    /// restating the default's ordering rule — which lives in the repository and is proven there.
+    /// </summary>
+    private async Task<IEnumerable<string>> NamesAsync(string tag, string sort)
+        => (await SearchAsync(tag, sort)).Select(w => w.Name).ToList();
+
     [Fact]
     public async Task Search_SortedByName_ReturnsAlphabeticalOrderRegardlessOfPrice()
     {
@@ -87,6 +94,63 @@ public class CatalogSortTests(PostgresFixture db)
 
         // Assert
         Assert.Equal([10m, 20m, 30m], sorted.Select(w => w.Price));
+    }
+
+    [Fact]
+    public async Task Search_SortIsNull_FallsBackToTheDefaultOrdering()
+    {
+        // Arrange — the storefront's own first request, which sends no sort at all.
+        var tag = await GivenThreeWidgetsAsync();
+
+        // Act
+        var sorted = await SearchAsync(tag, null);
+
+        // Assert — answered in the featured default, which leads with what can be bought.
+        Assert.Equal(3, sorted.Count);
+        Assert.Equal(await NamesAsync(tag, WidgetSort.Featured), sorted.Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Search_SortIsEmpty_FallsBackRatherThanOrderingByNothing()
+    {
+        // Arrange — what a cleared dropdown puts in the query string.
+        var tag = await GivenThreeWidgetsAsync();
+
+        // Act
+        var sorted = await SearchAsync(tag, string.Empty);
+
+        // Assert
+        Assert.Equal(3, sorted.Count);
+        Assert.Equal(await NamesAsync(tag, WidgetSort.Featured), sorted.Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Search_SortDiffersOnlyByCase_IsNotTreatedAsTheKnownValue()
+    {
+        // Arrange — the sort values are a documented API contract, so the match is exact rather
+        // than forgiving. A caller sending "NAME" gets the default, not a silent correction.
+        var tag = await GivenThreeWidgetsAsync();
+
+        // Act
+        var sorted = await SearchAsync(tag, "NAME");
+
+        // Assert
+        Assert.Equal(await NamesAsync(tag, WidgetSort.Featured), sorted.Select(w => w.Name));
+    }
+
+    [Fact]
+    public async Task Search_PageBeyondTheLastOne_ReturnsNothingRatherThanWrappingAround()
+    {
+        // Arrange — a crawler or a hand-edited page number past the end of the result set.
+        var tag = await GivenThreeWidgetsAsync();
+
+        // Act
+        var sorted = await Widgets.SearchAsync(
+            new WidgetQuery(tag, ActiveOnly: true, Page: 99, PageSize: 20, Category: null, Sort: WidgetSort.Name),
+            CancellationToken.None);
+
+        // Assert — empty, not the first page again, which would make a crawler loop forever.
+        Assert.Empty(sorted);
     }
 
     [Fact]

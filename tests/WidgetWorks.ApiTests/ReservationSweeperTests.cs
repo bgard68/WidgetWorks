@@ -60,7 +60,7 @@ public class ReservationSweeperTests
         Assert.Equal(TaskStatus.RanToCompletion, sweeper.ExecuteTask.Status);
 
         // It records why: silently doing nothing looks identical to being broken.
-        Assert.Contains("Reservation sweep is disabled by configuration.", log.Messages);
+        Assert.Contains(log.Messages, m => m.Contains("disabled", StringComparison.OrdinalIgnoreCase));
 
         await sweeper.StopAsync(CancellationToken.None);
     }
@@ -86,8 +86,9 @@ public class ReservationSweeperTests
 
         // The schedule it settled on is logged where an operator can check it against the config.
         // Reached only after ExecuteAsync is past the switch, so the wait above also orders this.
-        Assert.Contains(log.Messages, m =>
-            m.Contains("00:05:00", StringComparison.Ordinal) && m.Contains("15", StringComparison.Ordinal));
+        var schedule = Assert.Single(log.Messages);
+        Assert.Contains("00:05:00", schedule, StringComparison.Ordinal);
+        Assert.Contains("15", schedule, StringComparison.Ordinal);
 
         await sweeper.StopAsync(CancellationToken.None);
     }

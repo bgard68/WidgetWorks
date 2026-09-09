@@ -100,4 +100,36 @@ public class ProxyConfigurationCheckTests
         // A page of identical warnings is how a real signal gets scrolled past.
         Assert.Single(log.Warnings);
     }
+
+    [Fact]
+    public void Warns_when_more_proxy_hops_are_trusted_than_actually_arrive()
+    {
+        var log = new CapturingLogger();
+        var check = new ProxyConfigurationCheck(
+            new RateLimitOptions { TrustForwardedFor = true, TrustedProxyHops = 2 }, log);
+
+        check.Inspect(Request(withForwardedFor: true));
+
+        // The setting reads as correct and the header is trusted, but the hop count runs off the
+        // front of a one-entry chain, so every request falls back to the proxy address -- the
+        // global-cap outage again, with nothing in the configuration looking wrong.
+        Assert.Single(log.Warnings);
+        Assert.Contains("TrustedProxyHops", log.Warnings[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Stays_quiet_when_the_chain_is_as_long_as_the_trusted_hop_count()
+    {
+        var log = new CapturingLogger();
+        var check = new ProxyConfigurationCheck(
+            new RateLimitOptions { TrustForwardedFor = true, TrustedProxyHops = 2 }, log);
+
+        var context = Request(withForwardedFor: true);
+        context.Request.Headers["X-Forwarded-For"] = "203.0.113.7, 198.51.100.9";
+
+        check.Inspect(context);
+
+        // Two entries for two trusted hops is the configuration working, not a mistake.
+        Assert.Empty(log.Warnings);
+    }
 }

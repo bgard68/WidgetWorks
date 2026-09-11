@@ -18,6 +18,10 @@ on:
       - 'LICENSE'
       - '.gitignore'
 
+  # On demand. The triggers above both wait on an event, so a green build can only be confirmed
+  # by producing one. No paths-ignore here: asking by hand means asking for the whole thing.
+  workflow_dispatch:
+
 permissions:
   contents: read
 

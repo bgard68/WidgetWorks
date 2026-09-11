@@ -20,6 +20,12 @@ on:
   schedule:
     - cron: "13 7 * * 1"
 
+  # Run on demand. The other three triggers all depend on something happening — a push, a PR, or
+  # Monday — so when the security tab reports this configuration as not enabled there is no way to
+  # ask it for an answer and find out whether that is stale or real. Carries no paths-ignore on
+  # purpose: a manual run is an explicit request for a full scan.
+  workflow_dispatch:
+
 permissions:
   contents: read
 

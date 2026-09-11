@@ -8,6 +8,11 @@ on:
     branches: [main]
     paths: ['web/**', '.github/workflows/web-ci.yml']
 
+  # On demand, and this one needs it most: the paths filter means a change outside web/ never
+  # runs it, so it can sit unexercised for long stretches with nothing reporting that. No paths
+  # filter on the manual trigger — the point of pressing it is to run regardless.
+  workflow_dispatch:
+
 permissions:
   contents: read
 

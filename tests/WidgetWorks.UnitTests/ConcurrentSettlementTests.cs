@@ -140,7 +140,9 @@ public class ConcurrentSettlementTests
             h.Orders,
             (inner, _) => inner.MarkPaidAsync(settled.Id, "Mock", "pi_settled", Now, CancellationToken.None));
         var handler = new ReleaseStaleReservationsHandler(
-            raced, new FakeTimeProvider(Now), new ReservationOptions(), NullLogger<ReleaseStaleReservationsHandler>.Instance);
+            // Explicit 15-minute window so the ~30/40-min-old orders above stay sweepable
+            // regardless of the production default (tuned longer for Neon cost).
+            raced, new FakeTimeProvider(Now), new ReservationOptions { ExpireAfterMinutes = 15, SweepIntervalMinutes = 5 }, NullLogger<ReleaseStaleReservationsHandler>.Instance);
 
         Assert.Equal(5, h.Widgets.Store[h.WidgetId].QuantityReserved);
 

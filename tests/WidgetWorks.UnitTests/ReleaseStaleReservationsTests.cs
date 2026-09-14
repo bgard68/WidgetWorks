@@ -41,7 +41,9 @@ public class ReleaseStaleReservationsTests
         var handler = new ReleaseStaleReservationsHandler(
             orders,
             new FakeTimeProvider(Now),
-            options ?? new ReservationOptions(),
+            // Explicit 15-minute window so these behaviour tests stay fixed to the offsets they set
+            // (orders parked ~30 min ago), independent of the production default tuned for Neon cost.
+            options ?? new ReservationOptions { ExpireAfterMinutes = 15, SweepIntervalMinutes = 5 },
             NullLogger<ReleaseStaleReservationsHandler>.Instance);
 
         return new Harness(orders, widgets, handler, widgetId);
@@ -135,7 +137,7 @@ public class ReleaseStaleReservationsTests
     [Fact]
     public async Task One_pass_takes_no_more_than_the_batch_size()
     {
-        var h = Build(new ReservationOptions { BatchSize = 2 });
+        var h = Build(new ReservationOptions { BatchSize = 2, ExpireAfterMinutes = 15, SweepIntervalMinutes = 5 });
         for (var i = 0; i < 5; i++)
         {
             await GivenUnsettledOrder(h, quantity: 1, updatedAt: Now.AddMinutes(-30 - i));
@@ -151,7 +153,7 @@ public class ReleaseStaleReservationsTests
     [Fact]
     public async Task The_oldest_unsettled_orders_are_released_first()
     {
-        var h = Build(new ReservationOptions { BatchSize = 1 });
+        var h = Build(new ReservationOptions { BatchSize = 1, ExpireAfterMinutes = 15, SweepIntervalMinutes = 5 });
         var oldest = await GivenUnsettledOrder(h, quantity: 1, updatedAt: Now.AddHours(-3));
         await GivenUnsettledOrder(h, quantity: 1, updatedAt: Now.AddMinutes(-20));
 

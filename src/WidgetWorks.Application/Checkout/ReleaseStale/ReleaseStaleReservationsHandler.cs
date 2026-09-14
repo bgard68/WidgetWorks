@@ -14,13 +14,23 @@ public sealed class ReservationOptions
     ///
     /// This is a trade, not a tuning knob: too short and a slow but honest bank redirect loses a
     /// customer's basket; too long and abandoned or abusive orders hold the catalogue hostage.
-    /// Fifteen minutes is longer than any interactive redirect and short enough that a shopper who
-    /// returns to an out-of-stock item is rare.
+    ///
+    /// Held at 90 minutes so it stays longer than the sweep interval below (the sweep must run more
+    /// often than the window, or expired orders sit unreleased). The interval is set for cost — see
+    /// there — and on this demo deployment no real inventory is at stake, so the longer hold is
+    /// harmless. A production store with scarce stock should shorten both together, or move to
+    /// on-access release, rather than shorten this alone.
     /// </summary>
-    public int ExpireAfterMinutes { get; set; } = 15;
+    public int ExpireAfterMinutes { get; set; } = 90;
 
-    /// <summary>How often the sweep runs.</summary>
-    public int SweepIntervalMinutes { get; set; } = 5;
+    /// <summary>
+    /// How often the sweep runs. Held at 60 minutes on purpose: the sweep queries Postgres each
+    /// tick, and Neon's serverless compute auto-suspends after ~5 minutes idle, so a shorter
+    /// interval pins the database awake around the clock (~180 CU-hrs/month, nearly double the free
+    /// allowance). Hourly lets Neon sleep between passes (~15 CU-hrs/month) while still reclaiming
+    /// abandoned-checkout stock well within the window above. Must stay below ExpireAfterMinutes.
+    /// </summary>
+    public int SweepIntervalMinutes { get; set; } = 60;
 
     /// <summary>
     /// Most orders released in one pass. A backlog is worked through over several sweeps rather

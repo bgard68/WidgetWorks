@@ -41,7 +41,7 @@ parts most demos skip, on clean, testable, time-abstracted code.
 | Web | **React 18 + TypeScript** (Vite 8) SPA; **Vitest + Testing Library** |
 | Run | **Docker Compose** (db + api + web + **Mailpit** mail catcher) |
 | CI | GitHub Actions — gitleaks, build (warnings-as-errors) + tests, CodeQL, Dependabot, web build |
-| Tests | 463 across four layers — backend unit, PostgreSQL integration, frontend component, end-to-end smoke. **95.5% backend / 89.5% frontend** lines, floors enforced in CI |
+| Tests | 817 automated — 575 backend (unit, API, PostgreSQL integration) and 242 frontend component — plus an end-to-end smoke test. Coverage floors enforced in CI: **95% backend** (merged) and **100% frontend** |
 | CD | Path-scoped deploys (API and web move independently; docs move nothing), each gated on the **whole** test suite |
 | Hosting | Azure **App Service F1** (API) + **Static Web Apps** (SPA) + **Key Vault** via managed identity, Postgres on **Neon** — all free tiers ([ch.10](10-deploy-azure-free.md)) |
 
@@ -56,6 +56,7 @@ src/
 tests/
   WidgetWorks.UnitTests       xUnit tests with in-memory fakes + FakeTimeProvider
   WidgetWorks.IntegrationTests repository tests against a real PostgreSQL
+  WidgetWorks.ApiTests        in-process HTTP tests of the endpoints (WebApplicationFactory)
 web/                          React + TypeScript SPA (Vite)
 infra/                        Provision.ps1 — idempotent Azure provisioning
 scripts/                      smoke-test.ps1, deploy helpers, tooling

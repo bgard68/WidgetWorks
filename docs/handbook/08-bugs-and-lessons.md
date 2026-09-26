@@ -547,8 +547,9 @@ the column worth reading.
   exception (documented demo creds) is explicit.
 - **Idempotent, deterministic seeds & migrations.** Seeds insert-if-absent; migrations are
   journaled and run once. Startup is safe to repeat.
-- **Soft-delete over hard-delete** for catalog: hiding a widget (`is_active=false`) keeps
-  order history intact.
+- **Archive rather than delete what has history.** A widget that has been ordered is archived
+  (`archived_at` set), so `order_items` still resolve; one that was never ordered is deleted
+  outright.
 - **Config must match the code that binds it, and the run profile must match the docs.** A
   mismatched example key — or a missing `launchSettings.json` — is a silent
   misconfiguration; keep them in lockstep and smoke-test the wired providers.

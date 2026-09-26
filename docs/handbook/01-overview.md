@@ -26,7 +26,8 @@ parts most demos skip, on clean, testable, time-abstracted code.
   **retire** a widget: deleted outright if it was never ordered, archived if it appears on
   one, so order history stays intact. An **immutable seeded admin** keeps the demo working.
 - **Notifications** — real transactional email (order received / shipped / cancelled,
-  registration, password reset), caught locally by Mailpit.
+  registration, password reset) — written to the API log by default, or caught locally by
+  Mailpit once the SMTP provider is enabled.
 
 ## Tech stack
 

@@ -32,6 +32,7 @@ dotnet user-secrets set "ConnectionStrings:WidgetWorks" \
 # Demo seed passwords (throwaway)
 dotnet user-secrets set "Seed:DemoAdminPassword" "DemoAdmin!Change01"
 dotnet user-secrets set "Seed:DemoCustomerPassword" "DemoUser!Change01"
+dotnet user-secrets set "Seed:DemoManagerPassword" "DemoManager!Change01"
 
 # Optional integrations
 dotnet user-secrets set "Google:ClientId" "<public-client-id>.apps.googleusercontent.com"
@@ -53,9 +54,10 @@ cp .env.example .env       # then edit; set POSTGRES_PASSWORD and Jwt__SigningKe
 docker compose up --build
 ```
 
-`.env` is ignored by `.gitignore` (only `*.env.example` is allowed) and gitleaks scans every push, so
-a real `.env` can't be committed. Keys use the double-underscore convention that maps to config
-sections (`Jwt__SigningKey` -> `Jwt:SigningKey`).
+`.env` is ignored by `.gitignore` (only `*.env.example` is allowed), and gitleaks scans every push to
+`main` and every pull request (plus the local pre-commit hook), so a real `.env` can't be committed.
+Keys use the double-underscore convention that maps to config sections
+(`Jwt__SigningKey` -> `Jwt:SigningKey`).
 
 ## 3) CI and production — platform secret stores
 
@@ -78,5 +80,6 @@ reads them with no changes across all three contexts.
 | CI | GitHub Actions Secrets / Variables | No |
 | Production | Key Vault / secret manager -> env vars | No |
 
-The only configuration file tracked in git is **`.env.example`** — a template with placeholder values,
-allow-listed in `.gitleaks.toml`.
+The only env-file templates tracked in git are **`.env.example`** and **`web/.env.example`** — both
+hold placeholder values and are allow-listed in `.gitleaks.toml`. Non-secret defaults live in
+`appsettings.json`.

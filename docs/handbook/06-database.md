@@ -102,7 +102,8 @@ erDiagram
   2FA, password reset, etc.).
 - **widgets** — `id`, `sku` (unique, upper), `name`, `description`, `image_url`, `price`
   `numeric(12,2)`, `is_active`, `quantity_on_hand`, `quantity_reserved`, `archived_at`,
-  timestamps. Available = on_hand − reserved (enforced by a check constraint).
+  timestamps. Available = on_hand − reserved; `ck_widgets_reserved_range` keeps
+  0 ≤ reserved ≤ on_hand, so it can never go negative.
   `archived_at` marks a retired widget: `order_items` references `widgets(id)` with no delete
   rule, so a widget that has been sold cannot be removed without breaking order history. It is
   archived instead — the row stays for reporting, and every listing filters on

@@ -222,7 +222,7 @@ VITE_API_BASE_URL=http://localhost:5080
 VITE_GOOGLE_CLIENT_ID=<id>.apps.googleusercontent.com
 ```
 
-Reload the store and use **Continue with Google**. The browser gets an ID token and posts it
+Reload the store and use **Sign in with Google**. The browser gets an ID token and posts it
 to `POST /auth/google`; the API validates it against Google's JWKS (issuer, audience = your
 client id, signature, expiry) — **no client secret** is used in this flow.
 
@@ -230,8 +230,8 @@ client id, signature, expiry) — **no client secret** is used in this flow.
 
 - Add your production origin (`https://yourdomain`) to Authorized JavaScript origins, and
   **publish** the OAuth consent screen (Google verifies it for external users).
-- Supply the client id as `Google__ClientId` on the API (a GitHub Actions **Variable** /
-  Azure App Service setting) and as `VITE_GOOGLE_CLIENT_ID` for the web build.
+- Supply the client id as `Google__ClientId` in the API's Azure App Service settings, and as the
+  `VITE_GOOGLE_CLIENT_ID` GitHub Actions **Variable** for the web build.
 
 See [Configuration → Google sign-in setup](04-configuration-and-2fa.md#google-sign-in-setup).
 

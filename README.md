@@ -42,7 +42,7 @@ docker compose up --build
 |---|---|
 | **Start here** — demo guide / landing page | http://localhost:3000 |
 | Store (SPA) | http://localhost:3000/store |
-| **Mailpit** — every email the app sends | http://localhost:8025 |
+| **Mailpit** — app email, once `.env` selects SMTP ([how](docs/handbook/04-configuration-and-2fa.md#reading-real-mail-locally-mailpit)) | http://localhost:8025 |
 | API + Scalar (interactive API UI) | http://localhost:8080/scalar/v1 |
 | Health (liveness — no database) | http://localhost:8080/health |
 | Readiness (queries the database) | http://localhost:8080/health/ready |
@@ -84,7 +84,7 @@ Start at the index, or jump straight to a chapter:
 | 4 | [Configuration, secrets, email & 2FA](docs/handbook/04-configuration-and-2fa.md) | What keys go where/how/why; **email setup**; Google setup; how to set up 2FA |
 | 5 | [Payments & testing cards](docs/handbook/05-payments.md) | Mock + Stripe, async/webhooks, **testing without charging a card**, sales tax, going live |
 | 6 | [Database & schema](docs/handbook/06-database.md) | Why Postgres, migrations, tables & relationships |
-| 7 | [Testing & smoke test](docs/handbook/07-testing.md) | Unit tests, CI gates, the end-to-end smoke test |
+| 7 | [Testing & smoke test](docs/handbook/07-testing.md) | Unit, repository, API and frontend tests, CI gates, the end-to-end smoke test |
 | 8 | [Bugs & lessons learned](docs/handbook/08-bugs-and-lessons.md) | Real bugs: how found, fixed, prevented |
 | 9 | [Runbook — testing & going live](docs/handbook/09-runbook.md) | **Step-by-step to test email, payments & Google locally, and how to configure each for real** |
 | 10 | [Deploying to Azure on free tiers](docs/handbook/10-deploy-azure-free.md) | Running the whole stack for $0 — F1 App Service, Static Web Apps, Key Vault + managed identity, Postgres on Neon |
@@ -132,7 +132,8 @@ pre-commit hooks, and an always-on secret-scan workflow.
   a "decline" token, and treats BNPL/"klarna" tokens as an **asynchronous** authorization
   that a webhook settles. The whole card / Google Pay / Klarna checkout is demoable this way.
 - **Stripe test mode** — set `Payments:Provider=Stripe` and a `sk_test_…` key (via secrets,
-  never committed); pay with Stripe's **test cards** (`4242…` succeeds, `4000…0002` declines).
+  never committed); pay with Stripe's **test PaymentMethods** (`pm_card_visa` succeeds,
+  `pm_card_chargeDeclined` declines).
   No money moves. **Going live** is the same integration with your own **live** keys supplied
   through the secret mechanism above — `.gitleaks.toml` even blocks committing `sk_live_*`.
 
@@ -157,7 +158,10 @@ src/
   WidgetWorks.Application     use-case handlers, ports (interfaces), DTOs
   WidgetWorks.Infrastructure  Dapper repos, security, payments, email, migrations, seed
   WidgetWorks.WebApi          Minimal API endpoints, DI, auth wiring
-tests/WidgetWorks.UnitTests   xUnit tests with in-memory fakes + FakeTimeProvider
+tests/
+  WidgetWorks.UnitTests       xUnit tests with in-memory fakes + FakeTimeProvider
+  WidgetWorks.IntegrationTests repository tests against a real PostgreSQL
+  WidgetWorks.ApiTests        in-process HTTP tests of the endpoints (WebApplicationFactory)
 web/                          React + TypeScript SPA (Vite)  — see web/README.md
 infra/                        Provision.ps1 — idempotent Azure provisioning
 scripts/                      smoke-test.ps1, deploy helpers, tooling

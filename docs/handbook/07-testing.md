@@ -2,12 +2,13 @@
 
 # 7. Testing & the smoke test
 
-Four layers, and all four are the gate — no deployment runs unless every one passes:
+Five layers, and all five are the gate — no deployment runs unless every one passes:
 
 | Layer | What it proves | Needs |
 |---|---|---|
 | **Backend unit** (xUnit) | handler and domain logic | nothing |
 | **Repository integration** (xUnit) | the SQL: reservations, constraints, cascades | PostgreSQL |
+| **API** (xUnit + `WebApplicationFactory`) | the HTTP surface in process: routing, binding, JWT pipeline, authorization, throttling, health | PostgreSQL |
 | **Frontend unit** (Vitest + Testing Library) | components render and behave | jsdom |
 | **Smoke test** (PowerShell) | the running API over HTTP, end to end | Docker |
 
@@ -39,14 +40,15 @@ they’re deterministic and need no database. Coverage includes:
 Run them:
 
 ```bash
-dotnet test
+dotnet test tests/WidgetWorks.UnitTests
 ```
 
-CI runs `dotnet build -warnaserror` then `dotnet test` on every code change (see below).
+(A bare `dotnet test` from the repo root also runs the repository and API suites, which need
+PostgreSQL — see below.) CI runs `dotnet build -warnaserror` then `dotnet test` on every code change (see below).
 
 ## Frontend unit tests
 
-`web/**/*.test.ts` (Vitest) cover the logic that isn't worth a browser:
+`web/src/**/*.test.{ts,tsx}` (Vitest) cover the logic that isn't worth a browser:
 
 **Logic**
 
@@ -118,6 +120,36 @@ string to the **`postgres`** maintenance database — the suite creates its own 
 > high-severity advisory, and this repo builds with NuGet audit as an error. Using the
 > Postgres that compose and CI already provide costs one environment variable instead.
 
+## API tests
+
+`tests/WidgetWorks.ApiTests` boots the **real `Program`** in process with `WebApplicationFactory`,
+against a throwaway PostgreSQL database created for the run (migrations and seeding included) and
+dropped afterwards. The unit suite proves the handlers and the integration suite proves the SQL;
+this suite proves the part neither can — the HTTP surface itself:
+
+- **Auth, cart/checkout, catalog, orders, 2FA and webhooks** end to end over HTTP, including the
+  JWT bearer pipeline with its security-stamp check and the Customer / Manager / Administrator
+  policies.
+- **Throttling** — the limits actually engage (`RateLimitingApiTests`), the client address used as
+  the partition key (`ClientAddressTests`), and the startup warnings for a misconfigured proxy
+  setting or a scaled-out instance (`ProxyConfigurationCheckTests`, `ScaleOutCheckTests`).
+- **Operability** — `/health` vs `/health/ready`, correlation ids on 500s, and what the API does when
+  its database is gone (`DiagnosticsApiTests`, `DatabaseOutageApiTests`).
+- **Config and background work** — the shipped `appsettings.json` stays honest
+  (`ShippedConfigurationTests`), and the reservation sweep's on/off switch (`ReservationSweeperTests`).
+
+Run them against the compose database, the same way as the repository tests:
+
+```bash
+docker compose up -d db
+```
+
+```bash
+dotnet test tests/WidgetWorks.ApiTests
+```
+
+`WIDGETWORKS_TEST_DB` overrides the connection, as above.
+
 ## End-to-end smoke test
 
 `scripts/smoke-test.ps1` drives the **running API** over HTTP and checks real responses.
@@ -154,7 +186,7 @@ Sample:
   [PASS] login returns 200 with tokens
   ...
 == Summary ==
-  Passed: 45 / 45
+  Passed: 59 / 59
   All checks passed.
 ```
 
@@ -163,11 +195,11 @@ Sample:
 | Workflow | Runs on | What |
 |---|---|---|
 | **Secret scan** | every push/PR (incl. docs) | gitleaks — never skipped |
-| **CI** | code changes (docs/scripts ignored) | `dotnet build -warnaserror` + `dotnet test`; dependency review (public) |
+| **CI** | code changes (docs/scripts ignored) | format check, `dotnet build -warnaserror`, `dotnet test` (all three .NET suites, against a PostgreSQL service) + the 95% coverage floor; dependency review (public) |
 | **CodeQL** | code changes (public) | security-extended analysis |
 | **Web CI** | `web/**` changes | `npm run build` (tsc + Vite) |
 | **Smoke test** | code changes (docs ignored) | `docker compose up db api` → wait `/health` → run `smoke-test.ps1` |
-| **Test suite** | called by both deploys | all four layers plus the coverage floor — see below |
+| **Test suite** | called by both deploys | all five layers plus the coverage floor — see below |
 | **Deploy API** | `main`, only for `src/**`, `tests/**`, `Dockerfile.api`, build files | `needs: tests` → publish Release → zip-deploy to App Service |
 | **Deploy web** | `main`, only for `web/**` | `needs: tests` → build the SPA → Static Web Apps |
 
@@ -182,8 +214,8 @@ smoke workflow can also be run on demand from the Actions tab (`workflow_dispatc
 | Job | What it runs |
 |---|---|
 | `backend` | unit tests + coverage report |
-| `integration` | repository tests against a PostgreSQL **service container** |
-| `coverage` | `needs: [backend, integration]` — merges both reports, enforces the **95%** floor |
+| `integration` | repository tests, then the API tests, against a PostgreSQL **service container** |
+| `coverage` | `needs: [backend, integration]` — merges the unit and integration/API reports, enforces the **95%** floor |
 | `frontend` | Vitest with thresholds, then `tsc` + Vite build |
 | `smoke` | compose up, wait for `/health`, run `smoke-test.ps1` |
 

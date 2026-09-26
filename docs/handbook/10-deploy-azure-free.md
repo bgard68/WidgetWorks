@@ -34,7 +34,10 @@ straight into the vault; prompts once (hidden) for the Neon connection string; w
 identity; publishes a **Release** build; audits that output before packaging; deploys; polls
 `/health`; and **stops the app** if it comes back unhealthy so a broken configuration cannot eat
 the F1 tier's daily CPU allowance. It is idempotent — re-run it freely. `-SkipInfra` redeploys code
-only; `-SkipDeploy` provisions without deploying.
+only; `-SkipDeploy` provisions without deploying; `-SkipSecrets` leaves the vault alone.
+`-GoogleClientId <id>` bakes the Google client id into the SPA build (it does **not** set the API's
+`Google__ClientId` — add that app setting yourself, see step 6). The connection-string prompt only
+appears when the vault lacks the secret; set `WW_NEON_CONNECTION_STRING` to skip it entirely.
 
 The rest of this chapter explains what it does and why, and gives the equivalent commands if you
 would rather drive each step by hand.
@@ -51,12 +54,14 @@ Apps, which is a separate service with its own CDN.
 Key Vault from a temporary file that is deleted, and App Service holds only
 `@Microsoft.KeyVault(...)` references resolved at runtime by a managed identity.
 
-### The startup crash loop — read this before deploying
+### A bad connection string — read this before deploying
 
-`Program.cs` runs `MigrationRunner.Run(connectionString)` at line 88, **before** `app.Run()`. DbUp
-throws if it cannot reach or migrate the database, the process exits, App Service restarts it, and
-it fails again — a loop that quietly consumes the F1 tier's **60 CPU-minutes per day**. A wrong
-connection string does not produce a broken page; it produces a day of burnt quota.
+`Program.cs` runs `MigrationRunner.TryRun(connectionString)` **before** `app.Run()`. It tries four
+times with 2 / 4 / 8 s backoff and never throws. If the database still can't be reached, the API
+starts **degraded**: it logs one Critical line with the reason, `/health` returns **503**, and every
+data request fails until you fix the setting and restart. (It used to throw and restart-loop — see
+[bug #16](08-bugs-and-lessons.md).) A running but broken app still spends the F1 tier's
+**60 CPU-minutes per day**, so stop it until it is fixed.
 
 Two habits make this a non-event:
 
@@ -66,7 +71,7 @@ Two habits make this a non-event:
 psql "postgresql://<user>:<pw>@<host>.neon.tech/widgetworks?sslmode=require" -c "select 1"
 ```
 
-**Watch the first boot, and stop the app the moment it loops.**
+**Watch the first boot, and stop the app if it comes up unhealthy.**
 
 ```bash
 az webapp log tail --name $APP --resource-group $RG   # ctrl-c when healthy
@@ -76,7 +81,8 @@ az webapp stop --name $APP --resource-group $RG       # stops the bleeding insta
 A stopped app burns nothing. Fix the setting, then `az webapp start`.
 
 Neon suspends after 5 minutes idle, so the very first connection may arrive while the database is
-still waking. Give the connection string room to wait rather than letting DbUp fail the boot:
+still waking. Give the connection string room to wait rather than letting all four migration
+attempts time out and leave the app unhealthy:
 
 ```text
 ;Timeout=30;Command Timeout=60
@@ -87,7 +93,7 @@ still waking. Give the connection string room to wait rather than letting DbUp f
 ## 0. Shared variables
 
 ```bash
-LOC=centralus                     # free Azure SQL is region-locked per subscription; match it
+LOC=centralus                     # same default region as Provision.ps1
 RG=rg-widgetworks
 SUFFIX=$(az account show --query id -o tsv | cut -c1-6)   # stable per-subscription suffix
 KV=widgetworks-kv-$SUFFIX         # vault names are globally unique
@@ -129,7 +135,7 @@ Rewrite it into the form the app expects, and keep `SSL Mode=Require`:
 Host=<host>.neon.tech;Database=widgetworks;Username=<user>;Password=<pw>;SSL Mode=Require;Trust Server Certificate=true;Timeout=30;Command Timeout=60
 ```
 
-The timeouts are not optional padding — see the crash-loop note above. `BuildConnectionString`
+The timeouts are not optional padding — see the bad-connection-string note above. `BuildConnectionString`
 reads `ConnectionStrings:WidgetWorks` first and only falls back to the `Postgres:*` keys, so
 setting `ConnectionStrings__WidgetWorks` alone is correct and the `Postgres__*` keys are unused
 in Azure.
@@ -203,9 +209,6 @@ az keyvault secret list --vault-name $KV --query "[].name" -o tsv
 The one step that cannot be automated is the first `npx neonctl auth`, which opens a browser to
 link the CLI to your Neon account. After that every call above runs unattended.
 
-Add `Email--Password`, `Payments--Stripe--SecretKey` and `Payments--Stripe--WebhookSecret` the same
-way — only if you move off the Dev and Mock providers.
-
 Key Vault names cannot contain `:` or `_`, so `Jwt__SigningKey` is stored as `Jwt--SigningKey`.
 Add `Email--Password`, `Payments--Stripe--SecretKey` and `Payments--Stripe--WebhookSecret` the same
 way only if you move off the Dev/Mock providers.
@@ -268,6 +271,10 @@ az webapp config appsettings set --name $APP --resource-group $RG --settings \
   RateLimiting__TrustForwardedFor="true"
 ```
 
+For Google sign-in, also set `Google__ClientId="<id>.apps.googleusercontent.com"` — the same Web
+client id you build into the SPA as `VITE_GOOGLE_CLIENT_ID`. Without it the API rejects every Google
+token, and neither this command nor `Provision.ps1` sets it.
+
 `RateLimiting__TrustForwardedFor` is not optional here. App Service is a reverse proxy, so every
 request reaches the app carrying the *proxy's* address. Left `false`, every caller in the world
 collapses into a single throttling partition and the per-caller limits become a global cap that the
@@ -307,7 +314,7 @@ anything that must never be public, zips the contents, deploys, and then polls `
 APP=$APP RG=$RG ./scripts/deploy-api-azure.sh
 ```
 
-The guard aborts on any `.cs`, `.csproj`, `.env`, `.sln`, `docker-compose*.yml`, or a `.git/`,
+The guard aborts on any `.cs`, `.csproj`, `.env`, `.env.*`, `.sln`, `.slnx`, `docker-compose*.yml`, or a `.git/`,
 `node_modules/`, `src/`, `web/`, `tests/` or `docs/` directory, and it verifies
 `WidgetWorks.WebApi.dll` and `appsettings.json` are present before shipping.
 
@@ -415,31 +422,37 @@ Taken from the source, not from memory — `grep` for `configuration["..."]`, `G
 
 | Key | Required? | Default if unset |
 |---|---|---|
-| `ConnectionStrings__WidgetWorks` | **Yes in Azure** | falls back to `Postgres__*`, i.e. `localhost` → **boot loop** |
+| `ConnectionStrings__WidgetWorks` | **Yes in Azure** | falls back to `Postgres__*`, i.e. `localhost` → app starts but `/health` returns 503 |
 | `Postgres__Host` / `Port` / `Database` / `Username` / `Password` | no (Docker path) | `localhost` / `5432` / `widgetworks` / `widgetworks` / empty |
-| `Jwt__SigningKey` | **Yes** | empty — the app boots but every token operation fails |
+| `Jwt__SigningKey` | **Yes** | empty — startup throws (zero-length signing key) and the process exits: a real restart loop |
 | `Jwt__Issuer` / `Audience` / `KeyId` / `AccessTokenMinutes` / `RefreshTokenDays` | no | `appsettings.json` |
-| `Cors__AllowedOrigins` | **Yes** | unset means the SPA is blocked by the browser |
+| `Jwt__Keys` / `Jwt__ActiveKeyId` | only for key rotation | empty = single-key mode using `SigningKey` / `KeyId` |
+| `Cors__AllowedOrigins` | **Yes** | `http://localhost:3000,http://localhost:5173` — so in Azure the SPA is blocked by the browser |
 | `App__BaseUrl` | for email links | password-reset links point at localhost |
 | `Payments__Provider` | no | `Mock` |
 | `Payments__Mock__WebhookSecret` | no | empty = webhook needs no signature |
 | `Payments__Stripe__SecretKey` / `WebhookSecret` | only if provider is Stripe | empty |
+| `Payments__Stripe__ApiBase` | no | `https://api.stripe.com` |
 | `Email__Provider` | no | `Dev` (writes to the log) |
 | `Email__Host` / `Port` / `UseStartTls` / `Username` / `Password` / `FromAddress` / `FromName` | only if provider is Smtp | `localhost` / `587` / **`true`** / … |
 | `Google__ClientId` | only for Google sign-in | empty = disabled server-side |
-| `Seed__DemoAdminEmail` / `DemoCustomerEmail` | no | `appsettings.json` |
-| `Seed__DemoAdminPassword` / `DemoCustomerPassword` | no | empty |
+| `Google__JwksUri` | no | Google's public JWKS endpoint |
+| `Seed__DemoAdminEmail` / `DemoManagerEmail` / `DemoCustomerEmail` | no | `appsettings.json` |
+| `Seed__DemoAdminPassword` / `DemoManagerPassword` / `DemoCustomerPassword` | no | empty |
 | `AccountSecurity` section | no | code defaults |
+| `RateLimiting__TrustForwardedFor` / `TrustedProxyHops` | **`true` / `1` behind App Service** | `false` / `1` |
+| `RateLimiting__Auth` / `Checkout` / `Lookup` | no | 20 / 8 / 10 requests per 60 s, per client |
+| `Reservations__Enabled` / `ExpireAfterMinutes` / `SweepIntervalMinutes` / `BatchSize` | no | `true` / `90` / `60` / `100` |
 
-Only two of these will stop a deployment dead: the connection string (boot loop) and
-`Cors__AllowedOrigins` (SPA cannot reach the API). `Jwt__SigningKey` fails later, at first sign-in,
-which is easy to misdiagnose as a login bug.
+Two of these stop a deployment dead: `Jwt__SigningKey` (startup throws, so App Service
+restart-loops) and `Cors__AllowedOrigins` (the SPA cannot reach the API). A bad connection string
+leaves the app up but returning 503 on `/health`.
 
 ## What ships in the deployment
 
 Verified against a real `dotnet publish`:
 
-- The **11 migrations are embedded resources inside `WidgetWorks.Infrastructure.dll`**, not loose
+- The **12 migrations are embedded resources inside `WidgetWorks.Infrastructure.dll`**, not loose
   files. There is no `Migrations/` folder to copy and none to forget.
 - `appsettings.json` ships and is required for the non-secret defaults.
 - `appsettings.Development.json`, `web.config` and the `.pdb` files also ship. The first two are

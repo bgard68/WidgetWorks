@@ -27,7 +27,7 @@ Then open:
 |---|---|
 | **Start here** — demo guide / landing page | http://localhost:3000 |
 | Store (SPA) | http://localhost:3000/store |
-| **Mailpit** — every email the app sends | http://localhost:8025 |
+| **Mailpit** — app email, once `.env` selects SMTP ([how](04-configuration-and-2fa.md#reading-real-mail-locally-mailpit)) | http://localhost:8025 |
 | API + Scalar (interactive API UI) | http://localhost:8080/scalar/v1 |
 | Health (liveness — no database) | http://localhost:8080/health |
 | Readiness (queries the database) | http://localhost:8080/health/ready |
@@ -45,7 +45,8 @@ Migrations and demo seed run automatically on API start.
 | Manager | `manager@widgetworks.demo` | `DemoManager!Change01` | Catalog (create/edit/restock/hide) and order fulfilment — but **not** delete or user management |
 | Customer | `demo@widgetworks.demo` | `DemoUser!Change01` | Shop, check out, and see their own orders |
 
-All three are seeded on API start from the `Seed__Demo*` keys in `.env`, so every RBAC
+All three are seeded on API start — emails from `appsettings.json`, passwords from the
+`Seed__Demo*Password` values (Compose defaults, overridable in `.env`) — so every RBAC
 policy in the app can be exercised from the login screen. The seeded admin has **no 2FA** by
 default, so it logs straight in with email + password.
 
@@ -98,7 +99,7 @@ values and why.
   finish and `docker compose ps` to show all services running.
 - **“port is already allocated”** — something else is on 3000 / 8080 / 5432; stop it or
   remap the port in `docker-compose.yml`.
-- **API exits immediately / “signing key” or DB password errors under `dotnet run`** —
+- **API exits immediately / “signing key” errors under `dotnet run`** —
   you’re almost certainly not in the Development environment (so user-secrets didn’t
   load). Confirm `launchSettings.json` is present, or run
   `dotnet run --environment Development`.
@@ -108,7 +109,7 @@ values and why.
   `Email__Port=1025`, and **`Email__UseStartTls=false`**. Port 1025 is plain SMTP; leaving
   STARTTLS on is the usual reason nothing arrives. Full recipe in
   [Configuration](04-configuration-and-2fa.md#reading-real-mail-locally-mailpit).
-- **API up but every request 503** — the database was unreachable at startup, so migrations
-  were skipped and the app is running degraded on purpose rather than restart-looping.
-  `/health` says so; fix the connection and restart the API. Once running, `/health/ready`
-  is the one that keeps checking — `/health` only reports how startup went.
+- **API up but data requests return 500 and `/health` returns 503** — the database was
+  unreachable at startup, so migrations were skipped and the app is running degraded on purpose
+  rather than restart-looping. `/health` says so; fix the connection and restart the API. Once
+  running, `/health/ready` is the one that keeps checking — `/health` only reports how startup went.

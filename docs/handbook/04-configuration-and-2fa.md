@@ -6,9 +6,9 @@
 
 **No secret, token, key, connection string, or client id is ever committed.** `appsettings.json`
 holds only **non-secret defaults and structure** (log levels, JWT issuer/audience/`kid`, token
-lifetimes, demo seed *emails*). The only tracked config *file* with placeholder-ish values is
-`.env.example` (allow-listed in `.gitleaks.toml`). `.gitignore` blocks `.env`, `secrets.json`,
-keys/certs; gitleaks scans every push.
+lifetimes, demo seed *emails*). The only tracked config *files* with placeholder-ish values are
+`.env.example` and `web/.env.example` (allow-listed in `.gitleaks.toml`). `.gitignore` blocks `.env`, `secrets.json`,
+keys/certs; gitleaks scans every push to `main` and every pull request.
 
 ## Configuration precedence
 
@@ -47,7 +47,7 @@ by policy.
 |---|---|---|---|
 | `Jwt:SigningKey` | HMAC key for signing JWTs | env / GitHub Secret / Azure setting / Key Vault; user-secrets in dev | Secret; long-lived signing material. |
 | `ConnectionStrings:WidgetWorks` or `Postgres:*` | DB connection / password | env / Azure setting / Key Vault; user-secrets or `.env` in dev | Secret; the DB password. |
-| `Seed:DemoAdminPassword`, `Seed:DemoCustomerPassword` | Demo seed passwords | env / `.env` / user-secrets | Throwaway, documented — the sanctioned exception. |
+| `Seed:DemoAdminPassword`, `Seed:DemoManagerPassword`, `Seed:DemoCustomerPassword` | Demo seed passwords | env / `.env` / user-secrets | Throwaway, documented — the sanctioned exception. |
 | `Google:ClientId` | Google OAuth **client id** | env / GitHub Variable / Azure setting | **Public** (ships in the browser too); kept out of source by policy, not because it's secret. |
 | `Payments:Provider` | `Mock` (default) or `Stripe` | env / appsettings | Not secret. |
 | `Payments:Stripe:SecretKey` | Stripe secret key (`sk_test_`/`sk_live_`) | env / GitHub Secret / Azure setting / Key Vault | Secret; never committed. |
@@ -158,16 +158,18 @@ bank's redirect — the stock would be held forever. A background sweep returns 
 ```json
 "Reservations": {
   "Enabled": true,
-  "ExpireAfterMinutes": 15,
-  "SweepIntervalMinutes": 5,
+  "ExpireAfterMinutes": 90,
+  "SweepIntervalMinutes": 60,
   "BatchSize": 100
 }
 ```
 
 `ExpireAfterMinutes` is a trade, not a tuning knob. Too short and a slow but honest bank redirect
 loses a customer's basket; too long and abandoned or abusive orders hold the catalogue hostage.
-Fifteen minutes is longer than any interactive redirect and short enough that a returning shopper
-rarely finds the item gone.
+Ninety minutes is longer than any interactive redirect and stays longer than the sweep interval.
+The sweep runs **hourly** so Neon's serverless compute can suspend between passes — a more frequent
+timer would keep the database awake around the clock. A store with scarce stock should shorten both
+together, keeping `SweepIntervalMinutes` below `ExpireAfterMinutes`.
 
 `BatchSize` caps one pass, so a backlog is worked through over several sweeps rather than one long
 transaction. `Enabled: false` turns the sweep off for a host that should not run background work.

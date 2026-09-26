@@ -52,8 +52,8 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
 
 ## Security model
 
-- **Access tokens** — short-lived JWTs carrying `sub`, `role`, and a per-user `stamp`
-  claim, signed with a key identified by a `kid` header.
+- **Access tokens** — short-lived JWTs carrying `sub`, a role claim (`ClaimTypes.Role`), and a
+  per-user `stamp` claim, signed with a key identified by a `kid` header.
 - **Refresh tokens** — opaque, SHA-256 **hashed at rest**, single-use with **rotation +
   reuse detection** (a reused token revokes the whole family).
 - **Security stamp** — every token validation checks the token’s `stamp` against the
@@ -72,7 +72,9 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
   they are charged cannot drift apart. `OrderDraft` builds the order row, leaving
   `CheckoutHandler` sequencing steps rather than performing them.
 - **RBAC** — policy-based: `ManageCatalog` (Manager or Administrator) guards catalog/orders;
-  `ManageUsers` and `DeleteCatalog` are Administrator-only. Removing a widget is deliberately
+  `DeleteCatalog` is Administrator-only, and user administration
+  (`/admin/users/{id}/revoke-sessions`) requires the Administrator role directly (a `ManageUsers`
+  policy is defined for it but not yet applied). Removing a widget is deliberately
   narrower than editing one: a Manager can create, edit, restock and hide, but not retire.
 - **Retiring a widget** — `DELETE /admin/catalog/widgets/{id}` deletes outright only when the
   widget has no order history. Once it appears on an order it is **archived** instead

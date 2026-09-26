@@ -205,10 +205,11 @@ Key properties:
 POST /webhooks/payments/{provider}
 ```
 
-`{provider}` selects the parser (`mock`, `stripe`). The raw body is read and handed to the
-parser with the signature header (`Stripe-Signature`, or `X-Webhook-Signature` for the
-mock). Responses: **404** unknown provider · **400** unverifiable/malformed · **200**
-acknowledged (with the resulting status, or `ignored` when no order matches).
+`{provider}` must match the configured `Payments:Provider` (`mock` or `stripe`): only that
+provider's parser is registered, so the other name returns **404**. The raw body is read and
+handed to the parser with the signature header (`Stripe-Signature`, or `X-Webhook-Signature`
+for the mock). Responses: **404** unknown or inactive provider · **400** unverifiable/malformed ·
+**200** acknowledged (with the resulting status, or `ignored` when no order matches).
 
 For **Stripe**, the parser verifies the `Stripe-Signature` header (HMAC-SHA256 of
 `"{timestamp}.{payload}"` keyed by the `whsec_…` secret) and handles
@@ -227,8 +228,8 @@ You never need a real card (or even a Stripe account) to exercise checkout end t
 | Payment token | Result |
 |---|---|
 | anything (e.g. `tok_visa_ok`, `gpay_demo`) | Approved — order becomes **Paid** |
-| a token containing `decline` (e.g. `card-decline`) | **Declined** — reservation released, order **PaymentFailed** |
-| an async marker (`klarna…`, `bnpl…`, `async…`, `affirm…`, `afterpay…`) | **Pending** — order **AwaitingPayment**, settled by a webhook |
+| a token containing `decline` (e.g. `card-decline`), or exactly `4000000000000002` | **Declined** — reservation released, order **PaymentFailed** |
+| a token containing `async`, `bnpl`, `klarna`, `afterpay`, `affirm`, `paylater`, `pay-later` or `pending` (e.g. `klarna_demo`) | **Pending** — order **AwaitingPayment**, settled by a webhook |
 | amount ≤ 0 | Declined |
 
 To settle a mock async order locally (no account, no signature needed by default):
@@ -247,15 +248,20 @@ button that does exactly this. The smoke test exercises both paths plus the guar
 Set `Payments:Provider=Stripe` and a **`sk_test_…`** key (via secrets/env), then use Stripe's
 standard **test** instruments:
 
-| Test PaymentMethod / card | Outcome |
+| Test PaymentMethod | Outcome |
 |---|---|
 | `pm_card_visa` (default when no token given) | Succeeds |
-| `4242 4242 4242 4242` | Succeeds |
-| `4000 0000 0000 0002` | Card declined |
-| `4000 0000 0000 9995` | Insufficient funds |
+| `pm_card_chargeDeclined` | Card declined |
+| `pm_card_chargeDeclinedInsufficientFunds` | Insufficient funds |
 
-A card charge returns `succeeded` → order Paid. A redirect/BNPL method returns
-`requires_action`/`processing` → **AwaitingPayment**, settled later by the Stripe webhook.
+The token is sent as the PaymentIntent's `payment_method`, so it must be a `pm_…` id. Raw test card
+numbers such as `4242 4242 4242 4242` only work through Stripe.js / Elements, which this app does
+not integrate.
+
+A card charge returns `succeeded` → order Paid. A PaymentIntent that doesn't settle immediately
+(`requires_action` / `processing`) → **AwaitingPayment**, settled later by the Stripe webhook. The
+gateway creates intents with `automatic_payment_methods[allow_redirects]=never`, so redirect-based
+methods aren't offered until the SPA integrates Stripe's Payment Element.
 
 ## Going live (real payments)
 

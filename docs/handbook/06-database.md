@@ -2,7 +2,9 @@
 
 # 6. Database & schema
 
-## Why PostgreSQL (not SQLite)
+## Why PostgreSQL (not SQLite or SQL Server)
+
+### Why not SQLite
 
 SQLite is great for single-user, embedded scenarios, but this app relies on things a
 server database does well:
@@ -20,6 +22,32 @@ server database does well:
 - **Array parameters** — `where order_id = any(@ids)` for efficient batched loads via Npgsql.
 - **Production parity** — the dev database matches what you’d run in production, so behavior
   (types, constraints, concurrency) is the same everywhere.
+
+### Why not SQL Server
+
+SQL Server was the other serious candidate, and it could have done the core job: transactions, row
+locks, the conditional stock `UPDATE`, filtered unique indexes, triggers, and `uniqueidentifier` /
+`decimal` / `datetimeoffset` types all exist there. The choice was about fit, not a missing feature:
+
+- **Upserts are one statement.** The cart line and 2FA secret writes use
+  `insert … on conflict (…) do update`. SQL Server needs `MERGE` (which needs `HOLDLOCK` to be safe
+  under concurrency) or an update-then-insert pair.
+- **Readers don't block writers by default.** Postgres reads use MVCC snapshots out of the box.
+  Boxed SQL Server's default `READ COMMITTED` takes shared locks unless `READ_COMMITTED_SNAPSHOT` is
+  switched on (Azure SQL Database turns it on for you), so stock checks and checkout could queue
+  behind each other.
+- **Less ceremony for the queries this app writes.** `upper(sku)` is indexed directly, where SQL
+  Server needs a persisted computed column. `= any(@ids)` passes one array parameter with one cached
+  plan; Dapper on SQL Server expands `in @ids` into one parameter per value (capped at 2,100) or needs
+  a table-valued type. `update … returning` maps to SQL Server's `OUTPUT`, so that one is a wash.
+- **A light dev container.** `postgres:16-alpine` (see `docker-compose.yml`) is small and starts in
+  seconds; the SQL Server Linux image is over a gigabyte and needs at least 2 GB of RAM.
+- **Free hosting that keeps the stack.** Azure has no free Postgres tier, but Neon's free plan runs
+  the same Postgres. Azure SQL's free offer is real, but switching to it would mean porting every
+  migration and repository — see [deploying on free tiers](10-deploy-azure-free.md).
+
+SQL Server would have been a defensible choice; Postgres made the concurrency-sensitive paths simpler
+to write and cost nothing to host.
 
 Data access is **Dapper + Npgsql** — explicit SQL, no ORM. Snake_case columns map to
 PascalCase properties automatically.
@@ -43,6 +71,7 @@ journal table so each runs once. Files live in
 | 0009 | OrderTracking | `orders.tracking_number` |
 | 0010 | PasswordResetTokens | `password_reset_tokens` |
 | 0011 | WidgetArchive | `widgets.archived_at` (+ partial index on the live set) |
+| 0012 | RealignDemoCatalog | data only — realigns seeded demo widgets' names, descriptions and prices |
 
 ## Schema overview
 

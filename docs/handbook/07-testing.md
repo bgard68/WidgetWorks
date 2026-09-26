@@ -11,9 +11,11 @@ Four layers, and all four are the gate — no deployment runs unless every one p
 | **Frontend unit** (Vitest + Testing Library) | components render and behave | jsdom |
 | **Smoke test** (PowerShell) | the running API over HTTP, end to end | Docker |
 
-**Coverage: 95.5% backend (merged), 86% frontend statements / 89.5% lines.** Floors are
-enforced in CI — 90% backend, and thresholds in `vitest.config.ts` — so a regression fails
-the build. They are floors, not targets: they catch a slide, they are not an invitation to
+**Coverage floors: 95% backend (merged across the suites, `scripts/check-coverage.sh`) and 100%
+frontend statements, branches, functions and lines (`vitest.config.ts`).** Both are enforced in
+CI, so a regression fails the build. The frontend's 100% is honest because the few genuinely
+unreachable guards are excluded at the site with a `v8 ignore` comment giving the reason. They
+are floors, not targets: they catch a slide, they are not an invitation to
 write tests that move a number.
 
 ## Backend unit tests
@@ -181,7 +183,7 @@ smoke workflow can also be run on demand from the Actions tab (`workflow_dispatc
 |---|---|
 | `backend` | unit tests + coverage report |
 | `integration` | repository tests against a PostgreSQL **service container** |
-| `coverage` | `needs: [backend, integration]` — merges both reports, enforces the **90%** floor |
+| `coverage` | `needs: [backend, integration]` — merges both reports, enforces the **95%** floor |
 | `frontend` | Vitest with thresholds, then `tsc` + Vite build |
 | `smoke` | compose up, wait for `/health`, run `smoke-test.ps1` |
 

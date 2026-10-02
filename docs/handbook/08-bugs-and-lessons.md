@@ -510,6 +510,17 @@ the column worth reading.
 **Lesson** An insert-if-missing seed is a one-way door. After its first run the code stops being the source of truth for anything already inserted, and every later edit to that data is a statement about new databases only. The row count is what hides it: nothing is missing, nothing is duplicated, the totals reconcile against the seed perfectly — and totals are what gets checked. Content is not counted. The evidence that a seed is live is the *content* of the rows it claims to own, and the only way to see it was to read the running site against the code
 
 
+### 49 · The job that arms auto-merge became the red check that blocked it
+
+**Found by** Dependabot's undici bump (#133) sitting unmergeable with every substantive check green — ten successes and one failure, and the failure was `auto-merge`, the job whose only purpose is to let the pull request merge itself
+
+**Cause** The workflow runs on `pull_request: opened` and immediately calls `gh pr merge --auto`. GitHub rejects the underlying `enablePullRequestAutoMerge` mutation while the pull request is in `UNSTABLE` status — which, seconds after `opened` with ten checks still settling, is the status it is almost guaranteed to have. The job exited 1 on that rejection, and the red check *itself* then held the pull request in the state the mutation refuses. A retry could never succeed from inside the deadlock, because the thing being retried was the thing keeping the condition false
+
+**Fix** The arming step now retries five times with backoff, treats "already enabled" as success, and **never fails the job** — a genuine failure surfaces as a workflow warning instead of a failed check. Arming auto-merge is not a gate: branch protection still decides what merges, so a red status here can only ever subtract (by blocking a PR it has no opinion on), never protect. Applied to all nine copies of the workflow across the account's repositories, since every one carried the same race
+
+**Lesson** A helper job's failure mode must be weighed against what its red X *does*, not what it reports. This job failing communicated nothing anyone could act on — the enable call can simply be made again — but its X fed back into the very status that caused the failure, turning a timing hiccup into a permanent block. Jobs whose only effect is a convenience should be written so they cannot fail the pull request, because their failure is never information and sometimes a deadlock
+
+
 ## Lessons learned
 
 - **Treat CI as the compiler.** With no local SDK, `build -warnaserror` + `test` on every

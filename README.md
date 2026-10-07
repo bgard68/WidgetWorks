@@ -3,7 +3,7 @@
 An end-to-end online **widget store** — a portfolio showcase built to a production security
 posture. It demonstrates the hard parts most demos skip: real auth (JWT + rotating refresh
 + per-user security stamp), **TOTP 2FA** and Google sign-in, catalog/inventory with atomic
-stock reservation, server-side re-priced checkout with **pluggable payments** (mock +
+stock reservation, retry-safe server-side re-priced checkout with **pluggable payments** (mock +
 Stripe, sync and async/webhook), transactional email, and a full order lifecycle — on
 clean, testable, time-abstracted code.
 
@@ -136,6 +136,24 @@ pre-commit hooks, and an always-on secret-scan workflow.
   `pm_card_chargeDeclined` declines).
   No money moves. **Going live** is the same integration with your own **live** keys supplied
   through the secret mechanism above — `.gitleaks.toml` even blocks committing `sk_live_*`.
+
+Either way the path is built to survive being retried, because a checkout POST gets duplicated for
+ordinary reasons — a double-click, a proxy, a client retry policy:
+
+- **`Idempotency-Key` on `POST /checkout`** — the key is claimed in the database *before* any work
+  starts, so a repeat replays the original order instead of placing a second one, and a copy still
+  in flight is told to retry rather than charged. A 50-copy burst produces one order; the same burst
+  with the header removed produces 24.
+- **The provider gets its own key too** — the ledger above protects the *order* and is blind to a
+  retry of the outbound call, so the charge carries one as well. That is what makes retrying an
+  unanswered charge safe rather than a second payment.
+- **"We don't know" is never "no"** — a charge the provider never resolves keeps its stock
+  reservation and is settled later from the provider's own record, instead of being failed on a
+  guess. Telling a customer their payment failed when the money did move is the one outcome a shop
+  cannot take back.
+- **Refunds, full or partial**, and a staff list of anything needing a person — unconfirmed charges
+  and orders that look like duplicates. Every refund and status change is attributed in
+  `audit_events`.
 
 **Email** runs behind `IEmailSender`, selected by `Email:Provider`:
 

@@ -199,6 +199,68 @@ See [Payments](05-payments.md) for the full model (async settlement, webhooks, t
 
 ---
 
+### When a payment needs a person
+
+Nearly everything settles itself. These are the two cases that do not, and both surface in one
+place: **Admin → Orders**, above the order list. On a healthy day it shows nothing.
+
+**An order with an unconfirmed payment.** The provider never said whether the charge went through,
+so the order sits in `AwaitingPayment` holding its stock, and it is deliberately exempt from the
+sweep that expires abandoned reservations — failing a charge that may have succeeded is worse than
+holding the stock. Reconciliation probes the provider within a minute of the order being placed and
+again while any remain unresolved, so an entry here normally disappears on its own.
+
+If one does not, the log says so, once per pass:
+
+```
+N order(s) still have an unknown payment outcome after this pass and are holding stock.
+```
+
+and per order, after `Reconciliation:EscalateAfterHours` (4h):
+
+```
+Order WW-… has been unreconciled since … — … It still holds its stock reservation and needs a
+human to check Stripe and settle it by hand.
+```
+
+That is the signal to look the order number up in the provider's dashboard (it is in the
+PaymentIntent's `order_number` metadata) and then either refund the charge or mark the order by
+hand. Nothing automated will decide it for you, by design: if neither we nor the provider can say
+what happened, a guess is how a paid customer gets told they were not.
+
+**Orders that look like duplicates.** Same customer, same total, placed within ten minutes, neither
+already failed or cancelled. A heuristic for a human — two identical orders minutes apart are
+usually a mistake and occasionally a customer who meant it, and no query can tell those apart. Open
+both and refund one if it was a mistake.
+
+### Refunding
+
+**Admin → Orders → open the order → Refund order.** Leave the amount blank for the whole remaining
+balance, or type a figure for a partial refund. A part-refunded order stays `Paid` (goods are still
+owed) and only becomes `Refunded` once nothing is; stock returns to sale at that point.
+
+Two things worth knowing before you click:
+
+- **Only a paid order.** Once it has shipped, this refuses — the goods are in transit, and that is a
+  returns conversation rather than a button.
+- **"The refund could not be confirmed"** means exactly that. The order is left untouched on
+  purpose. **Do not press it again** — check the provider first, because the money may already have
+  gone and a second attempt would pay out twice. The attempt is in the audit trail as
+  `order.refund_unconfirmed`.
+
+Every refund, refusal and status change is written to `audit_events` with the staff member who did
+it, so "who refunded this order" is a query rather than a search through logs:
+
+```sql
+select created_at, action, detail, user_id
+from audit_events
+where action like 'order.%' and detail like '%WW-20260501-ABC123%'
+order by created_at;
+```
+
+A null `user_id` means the system did it — reconciliation settling a charge nobody pressed a button
+for.
+
 ## Google sign-in (OAuth)
 
 The sign-in button needs a real **OAuth 2.0 Client ID** — there's no offline stand-in.

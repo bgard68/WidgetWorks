@@ -40,15 +40,26 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
 
 ## Request lifecycle (example: place order)
 
-1. `POST /checkout` → endpoint binds the request and calls `CheckoutHandler`.
-2. The handler **re-prices server-side** (never trusts client totals): loads the cart,
+1. `POST /checkout` → endpoint binds the request and calls `IdempotentCheckout`.
+2. If the caller sent an **`Idempotency-Key`**, it is claimed in `idempotency_keys` *before any
+   work starts*. A repeat of the request replays the stored response instead of placing a second
+   order; a copy still in flight gets `409`. Without a key the call passes straight through,
+   unchanged — and unprotected.
+3. `CheckoutHandler` **re-prices server-side** (never trusts client totals): loads the cart,
    computes shipping + per-state tax, and builds the order.
-3. `IOrderRepository.TryPlaceAsync` inserts the order and **reserves inventory atomically**
+4. `IOrderRepository.TryPlaceAsync` inserts the order and **reserves inventory atomically**
    (a Dapper transaction; conditional stock UPDATE, rolls back if short).
-4. `IPaymentGateway.ChargeAsync` charges (Mock or Stripe).
-5. On success → mark Paid, clear cart, send the receipt email (best-effort). On decline →
-   release the reservation and mark PaymentFailed. On an async (BNPL/redirect) authorization →
-   park in **AwaitingPayment** until a provider webhook settles it (see [Payments](05-payments.md)).
+5. `IPaymentGateway.ChargeAsync` charges (Mock or Stripe), under its own provider-level
+   idempotency key so a retried call cannot become a second charge.
+6. Four outcomes, and the fourth is the subtle one:
+   - **Succeeded** → mark Paid, clear cart, send the receipt (best-effort).
+   - **Declined** → release the reservation, mark PaymentFailed.
+   - **Pending** (BNPL/redirect) → park in **AwaitingPayment** until a provider webhook settles it.
+   - **Indeterminate** — the provider never said — → park in AwaitingPayment, **keep the
+     reservation**, exempt the order from the expiry sweep, and let reconciliation settle it from
+     the provider's own record. "We don't know" is never treated as "no".
+
+   See [Payments](05-payments.md) for all four, and for refunds and the staff review list.
 
 ## Security model
 

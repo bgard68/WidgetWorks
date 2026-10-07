@@ -94,6 +94,16 @@ public interface IOrderRepository
 
     Task<IReadOnlyList<Order>> GetForUserAsync(Guid userId, CancellationToken ct);
 
+    /// <summary>
+    /// Staff order search by order number or customer email.
+    ///
+    /// Distinct from <see cref="GetByNumberAndEmailAsync"/>, which demands both because it answers an
+    /// anonymous request — knowing an order number must not be enough to read a stranger's address.
+    /// Staff are already authorised, so requiring the email as well would only mean they cannot help
+    /// a customer who has one piece of information and not the other.
+    /// </summary>
+    Task<IReadOnlyList<Order>> SearchAsync(string term, int limit, CancellationToken ct);
+
     /// <summary>Most recent orders across all customers — the staff view. Capped, not paged:
     /// staff want "what came in lately", and an unbounded scan is the wrong default.</summary>
     Task<IReadOnlyList<Order>> GetRecentAsync(int limit, CancellationToken ct);

@@ -25,6 +25,7 @@ using WidgetWorks.WebApi.Diagnostics;
 using WidgetWorks.WebApi.Hosting;
 using WidgetWorks.WebApi.RateLimiting;
 using WidgetWorks.WebApi.TwoFactor;
+using WidgetWorks.WebApi.Account;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -194,6 +195,7 @@ app.MapTwoFactorEndpoints();
 app.MapCatalogEndpoints();
 app.MapCartEndpoints();
 app.MapCheckoutEndpoints();
+app.MapAccountEndpoints();
 app.MapOrderEndpoints();
 app.MapPaymentWebhookEndpoints();
 

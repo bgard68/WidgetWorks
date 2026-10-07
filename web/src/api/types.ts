@@ -126,3 +126,23 @@ export interface PaymentExceptions {
   /** Orders that look like the same purchase twice: a heuristic, for a human to judge. */
   possibleDuplicates: OrderSummary[]
 }
+
+/** What the account area knows about the person signed in. Email is read-only; only the name edits. */
+export interface ProfileView {
+  email: string
+  displayName: string | null
+  role: string
+  twoFactorEnabled: boolean
+  /** False for a Google-only account, which has no password to change. */
+  hasPassword: boolean
+  memberSince: string
+}
+
+/** The token pair returned when a password change replaces the current session. */
+export interface AuthResponse {
+  accessToken: string
+  accessTokenExpiresAt: string
+  refreshToken: string
+  refreshTokenExpiresAt: string
+  role: string
+}

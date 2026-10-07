@@ -29,6 +29,11 @@ they’re deterministic and need no database. Coverage includes:
   revoked rejected), password reset (single-use, expiry, stamp rotation, protected-admin
   excluded), Google login (provision / link / unverified-refused).
 - 2FA — TOTP verify, challenge login, recovery codes.
+- Account — changing a password needs the current one (a session is not proof of identity),
+  a wrong one does not count toward lockout, the new one faces the same policy as
+  registration, re-setting the same password is refused rather than silently accepted, and a
+  Google-only account has none to change. Plus the name: trimmed, blank means null, and the
+  audit records that it changed without keeping a copy of it.
 - Password policy — each rule is the only thing between a password and acceptance (so a rule
   that stopped being evaluated shows up as a password that should have been refused), nothing
   at all fails every rule, surrounding spaces are kept because they are part of the password,
@@ -177,6 +182,11 @@ this suite proves the part neither can — the HTTP surface itself:
   its database is gone (`DiagnosticsApiTests`, `DatabaseOutageApiTests`).
 - **Config and background work** — the shipped `appsettings.json` stays honest
   (`ShippedConfigurationTests`), and the reservation sweep's on/off switch (`ReservationSweeperTests`).
+- **The account area and its boundaries** (`AccountApiTests`) — a profile is read from the token
+  rather than a route id, so one customer cannot fetch another's; a password change hands back a
+  working session while the old token stops validating; resetting someone else's second factor is
+  Administrator-only, not Manager; and order search refuses a term short enough to return a slice of
+  the customer list.
 - **Checkout under duplicate load** (`CheckoutIdempotencyLoadTests`) — fifty simultaneous copies of
   one request through the real pipeline, and forty shoppers submitting three times each. The order
   count is read back **from the database**, because an API agreeing with itself proves nothing.

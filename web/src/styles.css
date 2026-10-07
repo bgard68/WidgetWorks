@@ -983,3 +983,45 @@ select{
   .cline{break-inside:avoid}
   a[href]::after{content:""}
 }
+
+/* Account menu in the header -------------------------------------------- */
+.acctmenu{position:relative}
+.acctmenu-trigger{cursor:pointer;text-align:left;font:inherit}
+.acctmenu-pop{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:232px;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);
+  box-shadow:0 10px 30px rgba(16,24,40,.14);padding:10px;
+}
+.acctmenu-item{
+  display:block;width:100%;text-align:left;padding:7px 10px;border:0;background:none;
+  font:inherit;color:var(--ink);border-radius:var(--r-xs);cursor:pointer;text-decoration:none;
+}
+.acctmenu-item:hover{background:var(--surface-2,rgba(0,0,0,.04))}
+.acctmenu-sep{height:1px;background:var(--line);margin:8px 0}
+.acctmenu-new{font-size:.8rem;color:var(--ink-3);text-align:center;margin:8px 0 0}
+
+/* Account area: persistent sidebar beside the page content --------------- */
+.acct{display:grid;grid-template-columns:210px minmax(0,1fr);gap:26px;align-items:start}
+@media (max-width:760px){.acct{grid-template-columns:minmax(0,1fr)}}
+.acct-nav{display:flex;flex-direction:column;gap:2px}
+.acct-id{margin-bottom:12px}
+.acct-hi{font-size:1.15rem;font-weight:600;margin:0}
+.acct-since{font-size:.78rem;color:var(--ink-3);margin:2px 0 0}
+.acct-navlink{
+  padding:7px 10px;border-radius:var(--r-xs);color:var(--ink-2);text-decoration:none;font-size:.9rem;
+}
+.acct-navlink:hover{background:var(--surface-2,rgba(0,0,0,.04));color:var(--ink)}
+.acct-navlink.on{background:var(--surface-2,rgba(0,0,0,.05));color:var(--ink);font-weight:600}
+.acct-main{min-width:0}
+.acct-section{margin-top:14px}
+
+/* Order card: metadata strip above, status as the headline below. */
+.acct-order{margin-top:12px}
+.acct-order-meta{
+  display:flex;flex-wrap:wrap;gap:22px;padding:10px 14px;
+  background:var(--surface-2,rgba(0,0,0,.03));border-bottom:1px solid var(--line);
+  font-size:.82rem;border-radius:var(--r-sm) var(--r-sm) 0 0;
+}
+.acct-order-meta span{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)}
+.acct-order-num{margin-left:auto;text-align:right}
+.acct-order-body{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px}

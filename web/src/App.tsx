@@ -14,6 +14,9 @@ import { RegisterPage } from './pages/RegisterPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { OrdersPage } from './pages/OrdersPage'
+import { AccountPage } from './pages/AccountPage'
+import { AccountSecurityPage } from './pages/AccountSecurityPage'
+import { TrackOrderPage } from './pages/TrackOrderPage'
 import { OrderDetailPage } from './pages/OrderDetailPage'
 import { AdminWidgetsPage } from './pages/admin/AdminWidgetsPage'
 import { AdminOrderPage } from './pages/admin/AdminOrderPage'
@@ -37,6 +40,9 @@ export default function App() {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/track-order" element={<TrackOrderPage />} />
+              <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+              <Route path="/account/security" element={<ProtectedRoute><AccountSecurityPage /></ProtectedRoute>} />
               <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
               <Route path="/orders/:id" element={<ProtectedRoute><OrderDetailPage /></ProtectedRoute>} />
               <Route path="/admin/widgets" element={<ProtectedRoute staff><AdminWidgetsPage /></ProtectedRoute>} />

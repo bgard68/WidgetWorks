@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { AccountMenu } from './AccountMenu'
 import { useCart } from '../cart/CartContext'
 import { CATEGORIES, FREE_SHIPPING_THRESHOLD } from '../lib/catalog'
 
@@ -101,15 +102,16 @@ export function Layout() {
           </form>
 
           <div className="hdr-actions">
-            {isAuthenticated ? (
+            {/* One slot that keeps its shape signed out and signed in, rather than a link that
+                becomes a different control. Before this, signing in replaced the only account
+                affordance with a shortcut to orders — so there was no way into an account area at
+                all once you had one. */}
+            <AccountMenu />
+
+            {isAuthenticated && (
               <Link to="/orders" className="hdr-btn">
                 <span className="l1">Returns</span>
                 <span className="l2">&amp; Orders</span>
-              </Link>
-            ) : (
-              <Link to="/login" className="hdr-btn">
-                <span className="l1">Hello, sign in</span>
-                <span className="l2">Account &amp; Lists</span>
               </Link>
             )}
 
@@ -186,9 +188,13 @@ export function Layout() {
 
           <div className="foot-col">
             <h4>Your account</h4>
-            <Link to="/login">Sign in</Link>
-            <Link to="/register">Create account</Link>
+            {/* "Sign in" and "Create account" are no longer siblings here either — the header menu
+                leads with one and demotes the other, and the footer repeating them as equals was
+                the thing none of Company A, Company B or Company C do. */}
+            <Link to="/account">Account home</Link>
             <Link to="/orders">Your orders</Link>
+            <Link to="/account/security">Login and security</Link>
+            <Link to="/track-order">Track an order</Link>
             <Link to="/cart">Your cart</Link>
           </div>
 

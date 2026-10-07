@@ -3,7 +3,12 @@ using WidgetWorks.Domain.Common;
 
 namespace WidgetWorks.Application.TwoFactor.Disable;
 
-public sealed record DisableTwoFactorCommand(Guid UserId);
+/// <summary>
+/// <paramref name="ActorId"/> is whoever asked. The same as <paramref name="UserId"/> when someone
+/// turns their own 2FA off; a different id when an administrator resets it for a customer who lost
+/// their authenticator — and that difference is the whole reason the trail records both.
+/// </summary>
+public sealed record DisableTwoFactorCommand(Guid UserId, Guid? ActorId = null);
 
 public sealed class DisableTwoFactorHandler(
     IUserRepository users,
@@ -24,7 +29,15 @@ public sealed class DisableTwoFactorHandler(
         user.TwoFactorEnabled = false;
         user.SecurityStamp = Guid.NewGuid();
         await users.UpdateAsync(user, ct);
-        await audit.WriteAsync(user.Id, "2fa.disabled", null, ct);
+        // Named differently when it was not the account holder, because "an administrator cleared
+        // this customer's second factor" is the entry someone will come looking for, and it must not
+        // be indistinguishable from the customer doing it themselves.
+        var byAdmin = command.ActorId is { } actor && actor != user.Id;
+        await audit.WriteAsync(
+            user.Id,
+            byAdmin ? "2fa.reset_by_admin" : "2fa.disabled",
+            byAdmin ? $"reset by {command.ActorId}" : null,
+            ct);
 
         return Result.Success();
     }

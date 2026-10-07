@@ -253,6 +253,9 @@ public class ConcurrentSettlementTests
 
         public Task<IReadOnlyList<Order>> GetRecentAsync(int limit, CancellationToken ct)
             => inner.GetRecentAsync(limit, ct);
+
+        public Task<IReadOnlyList<Order>> SearchAsync(string term, int limit, CancellationToken ct)
+            => inner.SearchAsync(term, limit, ct);
     }
 
     /// <summary>

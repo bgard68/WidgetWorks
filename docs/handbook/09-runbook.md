@@ -233,6 +233,41 @@ already failed or cancelled. A heuristic for a human — two identical orders mi
 usually a mistake and occasionally a customer who meant it, and no query can tell those apart. Open
 both and refund one if it was a mistake.
 
+### A customer who has lost their second factor
+
+There is no self-service way back: losing both the authenticator and the recovery codes means the
+account is unreachable, because signing in needs a code only they have and turning 2FA off needs a
+session nobody can get.
+
+**Admin → the customer's account → reset two-step**, or `POST /admin/users/{id}/reset-2fa`.
+Administrator only — never Manager — because clearing a second factor is an account-takeover
+primitive. Verify who you are talking to out of band first; the route assumes you already have.
+
+It lands in `audit_events` as `order.`-style `2fa.reset_by_admin`, naming both the customer and the
+administrator who did it:
+
+```sql
+select created_at, action, detail, user_id
+from audit_events
+where action in ('2fa.reset_by_admin', '2fa.disabled')
+order by created_at desc;
+```
+
+Company A answers the same problem with staffed identity verification and Company B sidesteps it with
+cloud-synced passkeys. This is the small-merchant version, and it is the honest limit of what a
+single-operator store can offer.
+
+### Finding an order
+
+**Admin → Orders** lists the fifty most recent. For anything older, search by **order number or the
+customer's email** — `GET /admin/orders/search?q=`. Before that existed, staff could reach only those
+fifty or an order whose GUID they somehow had, which made every other staff action conditional on the
+order being recent.
+
+A customer with no account can find their own order at **/track-order** with the order number and the
+email they used. Both are required there, unlike the staff search: knowing an order number must not be
+enough to read a stranger's address.
+
 ### Refunding
 
 **Admin → Orders → open the order → Refund order.** Leave the amount blank for the whole remaining

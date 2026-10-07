@@ -77,6 +77,7 @@ journal table so each runs once. Files live in
 | 0014 | PaymentReconciliation | `orders.payment_unconfirmed_at` (+ partial index on the unresolved set) |
 | 0015 | RefundTotals | `orders.refunded_total` (+ check constraint keeping it within the order) |
 | 0016 | DemoProtection | `orders.is_protected` (+ partial index); extends the protected-account trigger to block enabling 2FA |
+| 0017 | UserDisplayName | `users.display_name` (nullable, blank-checked) |
 
 ## Schema overview
 
@@ -98,7 +99,11 @@ erDiagram
 
 - **users** — `id`, `email`, `normalized_email`, `password_hash` (nullable for Google-only
   accounts), `role`, `security_stamp`, `is_protected_admin`, `two_factor_enabled`,
-  `google_sub`, `failed_access_count`, `locked_until`, `created_at`.
+  `google_sub`, `display_name`, `failed_access_count`, `locked_until`, `created_at`.
+  `display_name` is optional and registration never asks for it — a name is cosmetic, and making
+  signup collect one would have meant changing the register flow, the seeder and the order
+  snapshot. A check constraint keeps it from being blank, so "no name" is null rather than an
+  empty string and the greeting can fall back cleanly.
 - **refresh_tokens** — `id`, `user_id`, `token_hash` (SHA-256), `family_id`, `expires_at`,
   `revoked_at`, `created_at`. Rotation + reuse detection revoke a whole `family_id`.
 - **two_factor_secrets** — `user_id`, `secret`, `is_confirmed`. **recovery_codes** —

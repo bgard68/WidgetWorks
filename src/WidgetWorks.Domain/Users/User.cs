@@ -18,6 +18,12 @@ public sealed class User
 
     public bool TwoFactorEnabled { get; set; }
 
+    /// <summary>
+    /// An optional name the shopper chose. Null until they set one — registration does not ask, so the
+    /// greeting falls back to a neutral one rather than showing an empty name.
+    /// </summary>
+    public string? DisplayName { get; set; }
+
     public string? GoogleSub { get; set; }
 
     public int FailedAccessCount { get; set; }

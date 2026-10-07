@@ -343,6 +343,25 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         return orders;
     }
 
+    public async Task<IReadOnlyList<Order>> SearchAsync(string term, int limit, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+
+        // Order number matches as a prefix so a partial one typed off a customer's email still finds
+        // it; email matches whole, because a prefix search on email would let staff enumerate the
+        // customer list by typing one letter.
+        var orders = (await db.QueryAsync<Order>(new CommandDefinition(
+            $@"select {OrderColumns} from orders
+               where order_number ilike @Prefix or lower(email) = @Email
+               order by created_at desc
+               limit @Limit",
+            new { Prefix = term + "%", Email = term.ToLowerInvariant(), Limit = limit },
+            cancellationToken: ct))).ToList();
+
+        await LoadItemsAsync(db, orders, ct);
+        return orders;
+    }
+
     public async Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);

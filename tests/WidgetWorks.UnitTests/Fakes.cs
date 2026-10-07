@@ -443,6 +443,14 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
     public Task<IReadOnlyList<Order>> GetForUserAsync(Guid userId, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<Order>>(Orders.Where(o => o.UserId == userId).OrderByDescending(o => o.CreatedAt).ToList());
 
+    public Task<IReadOnlyList<Order>> SearchAsync(string term, int limit, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<Order>>(Orders
+            .Where(o => o.OrderNumber.StartsWith(term, StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(o.Email, term, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(o => o.CreatedAt)
+            .Take(limit)
+            .ToList());
+
     public Task<IReadOnlyList<Order>> GetRecentAsync(int limit, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<Order>>(Orders.OrderByDescending(o => o.CreatedAt).Take(limit).ToList());
 }

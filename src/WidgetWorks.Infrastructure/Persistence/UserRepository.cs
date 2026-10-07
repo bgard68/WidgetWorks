@@ -7,7 +7,7 @@ namespace WidgetWorks.Infrastructure.Persistence;
 public sealed class UserRepository(IDbConnectionFactory factory) : IUserRepository
 {
     private const string Columns =
-        "id, email, normalized_email, password_hash, role, security_stamp, is_protected_admin, two_factor_enabled, google_sub, failed_access_count, locked_until, created_at";
+        "id, email, normalized_email, password_hash, role, security_stamp, is_protected_admin, two_factor_enabled, display_name, google_sub, failed_access_count, locked_until, created_at";
 
     public async Task<User?> GetByNormalizedEmailAsync(string normalizedEmail, CancellationToken ct)
     {
@@ -46,7 +46,7 @@ public sealed class UserRepository(IDbConnectionFactory factory) : IUserReposito
     {
         using var db = await factory.OpenAsync(ct);
         await db.ExecuteAsync(
-            @"update users set email = @Email, normalized_email = @NormalizedEmail, password_hash = @PasswordHash, role = @Role, security_stamp = @SecurityStamp, two_factor_enabled = @TwoFactorEnabled, google_sub = @GoogleSub, failed_access_count = @FailedAccessCount, locked_until = @LockedUntil where id = @Id",
+            @"update users set email = @Email, normalized_email = @NormalizedEmail, password_hash = @PasswordHash, role = @Role, security_stamp = @SecurityStamp, two_factor_enabled = @TwoFactorEnabled, display_name = @DisplayName, google_sub = @GoogleSub, failed_access_count = @FailedAccessCount, locked_until = @LockedUntil where id = @Id",
             user);
     }
 

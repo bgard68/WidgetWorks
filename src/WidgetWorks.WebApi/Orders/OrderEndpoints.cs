@@ -56,6 +56,15 @@ public static class OrderEndpoints
             return Results.Ok(result);
         });
 
+        // Search by order number or customer email. Registered before the {id} route, like the
+        // other literal segments, so it is not swallowed by it.
+        //
+        // Staff-only and deliberately not the same thing as the public /orders/lookup: that one
+        // demands the email alongside the number because it answers anonymous callers, and knowing
+        // an order number must not be enough to read a stranger's address.
+        admin.MapGet("/search", async (string? q, int? limit, SearchOrdersHandler handler, CancellationToken ct) =>
+            Results.Ok(await handler.Handle(new SearchOrdersQuery(q ?? string.Empty, limit ?? 0), ct)));
+
         // Everything on the payment path that needs a person: charges the provider never confirmed, and
         // orders that look like the same purchase twice. Registered before the {id} route so the
         // literal segment is not swallowed by it.

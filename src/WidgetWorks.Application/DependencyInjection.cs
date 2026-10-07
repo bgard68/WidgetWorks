@@ -35,6 +35,8 @@ using WidgetWorks.Application.TwoFactor.Confirm;
 using WidgetWorks.Application.TwoFactor.Disable;
 using WidgetWorks.Application.TwoFactor.Enroll;
 using WidgetWorks.Application.TwoFactor.Recovery;
+using WidgetWorks.Application.Account.ChangePassword;
+using WidgetWorks.Application.Account.Profile;
 
 namespace WidgetWorks.Application;
 
@@ -57,6 +59,9 @@ public static class DependencyInjection
         services.AddScoped<DisableTwoFactorHandler>();
         services.AddScoped<TwoFactorLoginHandler>();
         services.AddScoped<RecoveryLoginHandler>();
+        services.AddScoped<GetProfileHandler>();
+        services.AddScoped<UpdateProfileHandler>();
+        services.AddScoped<ChangePasswordHandler>();
         services.AddScoped<BrowseWidgetsHandler>();
         services.AddScoped<GetWidgetHandler>();
         services.AddScoped<CreateWidgetHandler>();
@@ -74,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<PurgeIdempotencyKeysHandler>();
         services.AddScoped<ReconcileUnconfirmedPaymentsHandler>();
         services.AddScoped<ListPaymentExceptionsHandler>();
+        services.AddScoped<SearchOrdersHandler>();
         services.AddScoped<RefundOrderHandler>();
         services.AddScoped<ReleaseStaleReservationsHandler>();
         services.AddScoped<ConfirmPaymentHandler>();

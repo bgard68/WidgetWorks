@@ -72,7 +72,7 @@ We build these to behave like a real site, not a stub.
 
 **Email — real transactional delivery.**
 - `IEmailSender` is backed by a **real provider**: **SMTP** (works with SendGrid,
-  Mailgun, Postmark, Company A SES, or any SMTP host) selected by configuration.
+  Mailgun, Postmark, or any SMTP host) selected by configuration.
 - Transactional emails: **registration confirmation**, **password reset**,
   **order received / being processed** (sent with every order), and **shipping/
   status updates**. Templated HTML + plain-text.

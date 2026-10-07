@@ -10,10 +10,10 @@ import type { AuthResponse, ProfileView } from '../api/types'
 /**
  * Login and security.
  *
- * Named after Company A's tile, which describes itself as "Edit login, name, and mobile number" — the
- * display name lives here rather than on a profile page of its own. That is the one thing Company A and
- * Company B agree on: neither has a standalone Profile destination. Company A folds the name into
- * security; Company B folds it into Account Settings alongside addresses. A page holding a single text
+ * Named after Company A's tile, which describes itself as "edit login, name, and mobile number" —
+ * the display name lives here rather than on a profile page of its own. That is the one thing
+ * Company A and Company B agree on: neither has a standalone Profile destination. One folds the name
+ * into security; the other into account settings alongside addresses. A page holding a single text
  * box would have needed justifying.
  *
  * Email is shown but not editable. Changing it safely means confirming to the *new* address before

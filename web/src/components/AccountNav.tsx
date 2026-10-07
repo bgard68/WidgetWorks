@@ -6,8 +6,8 @@ const memberFmt = new Intl.DateTimeFormat('en-US', { year: 'numeric' })
 /**
  * The account area's persistent left nav.
  *
- * A sidebar rather than Company A's tile grid. Both patterns are in the wild — Company A tiles, Company B
- * sidebars — so this is a judgement, not a rule: tiles look right with nine destinations and look
+ * A sidebar rather than a tile grid. Both patterns are in the wild — Company A uses tiles, Company B
+ * a sidebar — so this is a judgement, not a rule: tiles look right with nine destinations and look
  * unfinished with two. The sidebar also keeps you oriented when you move between pages, which tiles
  * cannot do because they vanish the moment you pick one.
  *

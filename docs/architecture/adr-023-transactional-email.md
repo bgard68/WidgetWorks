@@ -11,7 +11,7 @@ without requiring a mail server for local runs or CI.
 `IEmailSender` is the seam. Two implementations, selected by `Email:Provider`:
 
 - **`SmtpEmailSender`** — real delivery via `System.Net.Mail` against any SMTP host (SendGrid,
-  Mailgun, Postmark, Company A SES, or a local Mailpit/MailHog catcher). Host, port, and credentials come
+  Mailgun, Postmark, or a local Mailpit/MailHog catcher). Host, port, and credentials come
   only from configuration / `dotnet user-secrets` / deploy env — never the repo. Sends multipart
   (HTML + plain text).
 - **`DevEmailSender`** (default) — writes the message to stdout so it's visible in the app log with no

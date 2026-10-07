@@ -11,13 +11,14 @@ import type { ProfileView } from '../api/types'
  * all once you were signed in: the slot stopped being about your account and became a shortcut to
  * orders.
  *
- * Shaped after Company A and Company B, both of which do the same three things:
+ * Shaped after two large retailers — Company A, a general marketplace, and Company B, a big-box
+ * chain — both of which do the same three things:
  *
  * - **One entry point.** Sign in and create account are never siblings. The menu leads with a Sign in
  *   button and demotes "create an account" to a line of small print underneath.
  * - **The slot keeps its identity.** "Hello, sign in" becomes "Hello, Jane" in the same position with
  *   the same shape, rather than turning into a different control.
- * - **Short.** Company B lists four things. Company A lists eighteen because Company A has eighteen
+ * - **Short.** Company B lists four things. Company A lists eighteen because it runs eighteen
  *   businesses; copying that here would be a menu of mostly empty promises.
  *
  * Opens on click rather than hover: hover menus are unreachable by keyboard and hostile on touch,
@@ -93,8 +94,8 @@ export function AccountMenu() {
         <div className="acctmenu-pop" role="menu">
           {isAuthenticated ? (
             <>
-              {/* Orders first. The job someone came to do outranks the settings — Company B puts
-                  Purchase History above Account, Company C puts Pay bill above Account overview. */}
+              {/* Orders first. The job someone came to do outranks the settings — one retailer puts
+                  purchase history above account, another puts paying a bill above account overview. */}
               <Link to="/orders" className="acctmenu-item" role="menuitem" onClick={() => setOpen(false)}>Your orders</Link>
               <Link to="/account" className="acctmenu-item" role="menuitem" onClick={() => setOpen(false)}>Account home</Link>
               <Link to="/account/security" className="acctmenu-item" role="menuitem" onClick={() => setOpen(false)}>Login and security</Link>
@@ -104,7 +105,7 @@ export function AccountMenu() {
           ) : (
             <>
               <Link to="/login" className="btn btn-primary btn-block btn-sm" onClick={() => setOpen(false)}>Sign in</Link>
-              {/* Small print, not a sibling button. None of Company A, Company B or Company C present
+              {/* Small print, not a sibling button. None of the three retailers examined present
                   "sign in" and "create account" as equal choices — the one you want is overwhelmingly
                   the first, and offering both equally just makes people stop and decide. */}
               <p className="acctmenu-new">

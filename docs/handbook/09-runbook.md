@@ -253,7 +253,7 @@ where action in ('2fa.reset_by_admin', '2fa.disabled')
 order by created_at desc;
 ```
 
-Company A answers the same problem with staffed identity verification and Company B sidesteps it with
+Large retailers answer the same problem with staffed identity verification, or sidestep it with
 cloud-synced passkeys. This is the small-merchant version, and it is the honest limit of what a
 single-operator store can offer.
 

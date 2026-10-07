@@ -196,7 +196,7 @@ Email__FromAddress=no-reply@yourdomain.com
 Email__FromName=WidgetWorks
 ```
 
-Works with SendGrid, Mailgun, Postmark, Company A SES, or a **local mail catcher**.
+Works with SendGrid, Mailgun, Postmark, or a **local mail catcher**.
 
 ### Reading real mail locally (Mailpit)
 

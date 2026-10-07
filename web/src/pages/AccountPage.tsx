@@ -15,8 +15,8 @@ const dateFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric
  *
  * The main panel is recent orders, not a grid of links. That is deliberate and copied from Company B:
  * their account landing page leads with purchase history, because finding an order is overwhelmingly
- * why anyone opens an account page at all. Company A uses a tile grid instead, which works when you have
- * nine destinations — with two, tiles would read as a page someone forgot to finish.
+ * why anyone opens an account page at all. Company A uses a tile grid instead, which works when you
+ * have nine destinations — with two, tiles would read as a page someone forgot to finish.
  */
 export function AccountPage() {
   const { profile } = useProfile()

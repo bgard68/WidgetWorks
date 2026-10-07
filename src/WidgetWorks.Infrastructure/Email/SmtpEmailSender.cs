@@ -8,7 +8,7 @@ namespace WidgetWorks.Infrastructure.Email;
 
 /// <summary>
 /// Real SMTP delivery via System.Net.Mail. Works against any SMTP host (SendGrid, Mailgun, Postmark,
-/// Company A SES, or a local Mailpit/MailHog catcher). Host/credentials come only from configuration /
+/// or a local Mailpit/MailHog catcher). Host/credentials come only from configuration /
 /// user-secrets and are never committed. See ADR-023 for the production upgrade path (MailKit).
 /// </summary>
 public sealed class SmtpEmailSender(EmailOptions options) : IEmailSender

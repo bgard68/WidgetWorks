@@ -190,7 +190,7 @@ export function Layout() {
             <h4>Your account</h4>
             {/* "Sign in" and "Create account" are no longer siblings here either — the header menu
                 leads with one and demotes the other, and the footer repeating them as equals was
-                the thing none of Company A, Company B or Company C do. */}
+                the thing none of the large retailers examined do. */}
             <Link to="/account">Account home</Link>
             <Link to="/orders">Your orders</Link>
             <Link to="/account/security">Login and security</Link>

@@ -30,7 +30,7 @@ const order = {
 /**
  * The account area.
  *
- * Shaped after what Company A and Company B actually do rather than from memory — the header slot keeps
+ * Shaped after what two large retailers actually do rather than from memory — the header slot keeps
  * its identity across signed-out and signed-in, "create an account" is small print rather than a
  * sibling button, and the landing page leads with orders instead of a grid of links.
  */

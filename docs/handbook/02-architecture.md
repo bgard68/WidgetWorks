@@ -63,8 +63,10 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
 
 ## The account area
 
-One entry point in the header, shaped after what Company A, Company B and Company C actually do rather than
-from memory — all three were read directly while this was built.
+One entry point in the header, shaped after what three large retailers actually do rather than from
+memory — all three were examined directly while this was built. They are referred to below as
+Company A (a general marketplace), Company B (a big-box retailer) and Company C (a telecoms
+provider).
 
 - **The slot keeps its identity.** "Hello, sign in / Account" becomes "Hello, Jane / Account" in the
   same position. Before this, signing in replaced the only account affordance with a shortcut to
@@ -72,14 +74,14 @@ from memory — all three were read directly while this was built.
 - **Sign in and create account are never siblings.** The menu leads with a Sign in button and demotes
   "create an account" to small print beneath it. None of the three present them as equal choices, and
   the footer no longer does either.
-- **The menu is short.** Four items. Company A lists eighteen because Company A has eighteen businesses;
+- **The menu is short.** Four items. Company A lists eighteen because it runs eighteen businesses;
   copying that here would be a menu of mostly empty promises.
-- **`/account` lands on recent orders**, with a persistent sidebar — Company B's shape. Finding an order
-  is overwhelmingly why anyone opens an account page. Company A uses a tile grid instead, which works
-  with nine destinations and would read as unfinished with two.
+- **`/account` lands on recent orders**, with a persistent sidebar — Company B's shape. Finding an
+  order is overwhelmingly why anyone opens an account page. Company A uses a tile grid instead, which
+  works with nine destinations and would read as unfinished with two.
 - **There is no profile page.** The display name lives on Login and security. That is the one thing
-  Company A and Company B agree on: neither has a standalone profile destination — Company A folds the name
-  into security ("Edit login, name, and mobile number"), Company B into Account Settings.
+  Company A and Company B agree on: neither has a standalone profile destination — one folds the name
+  into its security page, the other into account settings.
 
 Login stays one step, deliberately. All three big stores ask for an identifier first and the password
 second, which solves "do I already have an account?" — but it does so by telling the caller whether an

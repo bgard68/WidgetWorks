@@ -57,7 +57,7 @@ public static class AccountEndpoints
         //
         // It exists because the alternative is worse: a customer who loses both their authenticator and
         // their recovery codes has no self-service way back, and without this there is no way back at
-        // all. Company A answers the same problem with staffed identity verification; this is the
+        // all. Large retailers answer the same problem with staffed identity verification; this is the
         // small-merchant version of that, and it assumes the caller has verified the person out of band.
         routes.MapPost("/admin/users/{userId:guid}/reset-2fa", async (
             Guid userId,

@@ -11,7 +11,7 @@
 
 ## 1. Product vision & purpose
 
-WidgetWorks is a **portfolio showcase**: a fully working, end‑to‑end e‑commerce store that sells "widgets." Its job is not to compete with Company A on breadth, but to **prove depth** — to demonstrate that the author can design and build a production‑shaped system covering the hard parts most demos skip: real authentication, two‑factor auth, token rotation on compromise, an immutable demo administrator, catalog and inventory management, a checkout with pluggable (mocked) payments, and shipping calculation — all built on clean, testable, time‑abstracted code.
+WidgetWorks is a **portfolio showcase**: a fully working, end‑to‑end e‑commerce store that sells "widgets." Its job is not to compete with a national retailer on breadth, but to **prove depth** — to demonstrate that the author can design and build a production‑shaped system covering the hard parts most demos skip: real authentication, two‑factor auth, token rotation on compromise, an immutable demo administrator, catalog and inventory management, a checkout with pluggable (mocked) payments, and shipping calculation — all built on clean, testable, time‑abstracted code.
 
 **The one‑sentence pitch:** *A small store that behaves like a real one, so a reviewer can log in, buy a widget, and see production‑grade security and architecture working underneath.*
 
@@ -377,7 +377,7 @@ These are the gaps I'd want your call on before we finalize the backlog.
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
 | Security features (rotation, 2FA, key rotation) are subtle and easy to get *almost* right | High | Medium | Treat as first‑class epics; focused tests for reuse detection, stamp invalidation, and clock‑edge cases using fake time |
-| Scope creep toward "a real Company A" | Medium | High | Hard "out of scope" list (§4.2); phases are vertical and shippable |
+| Scope creep toward "a real national retailer" | Medium | High | Hard "out of scope" list (§4.2); phases are vertical and shippable |
 | Overselling / double‑charge under concurrency | High | Medium | Atomic stock decrement in a transaction; idempotency keys on checkout; concurrency tests |
 | Ambient `DateTime` sneaks in, breaking testability | Medium | Medium | Lint/review rule banning `DateTime.Now/UtcNow`; inject `TimeProvider` everywhere |
 | Mock payment feels fake to reviewers | Low/Medium | Medium | Deterministic test‑card behavior + same interface a real gateway uses; optional Stripe test mode (Q6) |

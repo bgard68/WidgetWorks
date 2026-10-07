@@ -384,4 +384,23 @@ public class RefundOrderTests
         Assert.Contains("order.refund_unrecorded", audit.Actions);
         Assert.Contains(log.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("by hand"));
     }
+
+    [Fact]
+    public async Task A_showcase_order_is_refused_so_the_next_visitor_still_sees_it()
+    {
+        var c = await GivenAPaidOrderAsync();
+        c.Orders.Orders.Single().IsProtected = true;
+        var gateway = new RecordingGateway();
+
+        var result = await Handler(c, gateway).Handle(new RefundOrderCommand(c.Order.Id), CancellationToken.None);
+
+        // The demo publishes its credentials, so every visitor arrives able to refund. Nothing re-seeds
+        // orders, so one click would remove an exhibit permanently.
+        Assert.True(result.IsFailure);
+        Assert.Contains("showcase orders", result.Error);
+
+        // Refused before the provider is asked, so no money moves either.
+        Assert.Equal(0, gateway.Calls);
+        Assert.Equal(OrderStatus.Paid, c.Orders.Orders.Single().Status);
+    }
 }

@@ -3,6 +3,7 @@ using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Notifications;
 using WidgetWorks.Domain.Common;
 using WidgetWorks.Domain.Orders;
+using WidgetWorks.Domain.Demo;
 
 namespace WidgetWorks.Application.Orders.UpdateStatus;
 
@@ -31,6 +32,14 @@ public sealed class UpdateOrderStatusHandler(
         }
 
         var target = (command.Status ?? string.Empty).Trim();
+
+        // Cancelling is refused on a showcase order, and only cancelling: it is terminal, it releases
+        // the stock, and nothing re-seeds orders, so the exhibit would be gone for the next visitor.
+        // Shipping and delivering one stays allowed — they are part of what the demo is for.
+        if (order.IsProtected && target == OrderStatus.Cancelled)
+        {
+            return Result<OrderView>.Fail(DemoProtection.OrderMessage);
+        }
         if (!order.CanTransitionTo(target))
         {
             // Asked, not caught: a refused transition is an expected outcome here, not an exception.

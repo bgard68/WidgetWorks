@@ -108,10 +108,16 @@ public sealed class DbSeeder(IDbConnectionFactory factory, IPasswordHasher hashe
 
     public async Task SeedAsync(SeedOptions options, CancellationToken ct)
     {
+        // All three are protected, not just the administrator. The guard (0006) makes a protected row's
+        // password, email and role immutable and the row itself undeletable — which is exactly what the
+        // published demo credentials need, and the manager and customer had none of it. Deleting them was
+        // survivable (the seeder re-inserts), but a changed password was not: this is insert-if-absent, so
+        // it deliberately never overwrites one.
         await UpsertUserAsync(options.DemoAdminEmail, options.DemoAdminPassword, UserRoles.Administrator, isProtected: true, ct);
-        await UpsertUserAsync(options.DemoCustomerEmail, options.DemoCustomerPassword, UserRoles.Customer, isProtected: false, ct);
-        await UpsertUserAsync(options.DemoManagerEmail, options.DemoManagerPassword, UserRoles.Manager, isProtected: false, ct);
+        await UpsertUserAsync(options.DemoCustomerEmail, options.DemoCustomerPassword, UserRoles.Customer, isProtected: true, ct);
+        await UpsertUserAsync(options.DemoManagerEmail, options.DemoManagerPassword, UserRoles.Manager, isProtected: true, ct);
         await SeedWidgetsAsync(ct);
+        await ProtectDemoExhibitsAsync(options, ct);
     }
 
     private async Task UpsertUserAsync(string email, string password, string role, bool isProtected, CancellationToken ct)
@@ -160,6 +166,41 @@ public sealed class DbSeeder(IDbConnectionFactory factory, IPasswordHasher hashe
     /// SKU also needs a migration** to carry the correction to databases that already have it --
     /// see 0012_RealignDemoCatalog.sql.
     /// </summary>
+    /// <summary>
+    /// Marks the orders the demo is actually showing, so refunding and cancelling refuse them.
+    ///
+    /// The showcase orders are not seeded at all — they were placed through the app — so they are
+    /// identified by belonging to one of the demo accounts rather than by anything this code wrote.
+    ///
+    /// Run on every boot and idempotent, which matters more than it looks: it is what retro-fits the
+    /// flag onto a database that already holds the exhibits, rather than only protecting a freshly
+    /// seeded one.
+    ///
+    /// Orders placed later by a visitor signed in as the demo customer get flagged on the next restart
+    /// too. That is the honest consequence of identifying them by owner, and it is the right way round
+    /// — those orders are part of what the next visitor sees.
+    /// </summary>
+    private async Task ProtectDemoExhibitsAsync(SeedOptions options, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+
+        var demoEmails = new[] { options.DemoAdminEmail, options.DemoCustomerEmail, options.DemoManagerEmail }
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Select(e => e.Trim().ToUpperInvariant())
+            .ToArray();
+
+        if (demoEmails.Length == 0)
+        {
+            return;
+        }
+
+        await db.ExecuteAsync(new CommandDefinition(
+            @"update orders set is_protected = true
+              where upper(email) = any(@Emails) and not is_protected",
+            new { Emails = demoEmails },
+            cancellationToken: ct));
+    }
+
     private async Task SeedWidgetsAsync(CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);

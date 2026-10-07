@@ -19,6 +19,27 @@ public static class ProtectedAdminGuard
         }
     }
 
+    /// <summary>
+    /// Refuses 2FA enrolment on a protected account.
+    ///
+    /// This is the one thing a visitor to a credentials-published demo can do that nothing recovers
+    /// from. Signing in afterwards needs a code only they hold, the recovery codes were shown only to
+    /// them, and turning it off needs a session nobody can obtain — so the account is gone until
+    /// someone edits the database by hand. The seeder does not help: it is insert-if-absent and leaves
+    /// an existing account alone.
+    ///
+    /// Turning 2FA *off* stays allowed, so this cannot wedge an account the other way.
+    /// </summary>
+    public static void EnsureCanEnableTwoFactor(User user)
+    {
+        if (user.IsProtectedAdmin)
+        {
+            throw new ProtectedAdminException(
+                "Two-factor authentication cannot be enabled on a shared demo account. " +
+                "Register your own account to try it.");
+        }
+    }
+
     public static void EnsureCanChangeIdentity(User current, string newEmail, string newRole)
     {
         if (!current.IsProtectedAdmin)

@@ -128,6 +128,9 @@ fake would only prove the fake works:
   cart upsert, cascading deletes.
 - **Idempotent startup** — migrations journaled, and a seeder that can run on every boot
   without duplicating an account or resetting a password someone changed.
+- **Demo protection** — all three demo accounts are protected, a demo password cannot be
+  changed at all (the database refuses it, not merely the seeder declining to restore it),
+  2FA cannot be enabled on one, and the showcase orders are flagged by owner on every boot.
 - **Refund concurrency** — two refunds racing on one order, both reading a zero running total and
   both trying to write the same new one: exactly one applies. Overpaying is prevented by the
   database, which is the only place that claim can be tested.

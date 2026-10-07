@@ -47,15 +47,20 @@ public class SeederAndMigrationTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task Only_the_seeded_administrator_is_protected()
+    public async Task Every_seeded_demo_account_is_protected_not_just_the_administrator()
     {
         var options = Options(Guid.NewGuid().ToString("N")[..8]);
 
         await Seeder.SeedAsync(options, CancellationToken.None);
 
-        Assert.True((await Users.GetByNormalizedEmailAsync(options.DemoAdminEmail.ToUpperInvariant(), CancellationToken.None))!.IsProtectedAdmin);
-        Assert.False((await Users.GetByNormalizedEmailAsync(options.DemoManagerEmail.ToUpperInvariant(), CancellationToken.None))!.IsProtectedAdmin);
-        Assert.False((await Users.GetByNormalizedEmailAsync(options.DemoCustomerEmail.ToUpperInvariant(), CancellationToken.None))!.IsProtectedAdmin);
+        // All three, because all three have published passwords. The manager and customer used to be
+        // unprotected, which left their passwords changeable — and the seeder is insert-if-absent, so a
+        // changed one would never have been restored.
+        foreach (var email in new[] { options.DemoAdminEmail, options.DemoManagerEmail, options.DemoCustomerEmail })
+        {
+            var user = await Users.GetByNormalizedEmailAsync(email.ToUpperInvariant(), CancellationToken.None);
+            Assert.True(user!.IsProtectedAdmin, $"{email} should be protected");
+        }
     }
 
     [Fact]
@@ -74,20 +79,67 @@ public class SeederAndMigrationTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task Seeding_leaves_an_existing_password_alone()
+    public async Task A_demo_password_cannot_be_changed_at_all()
     {
         var options = Options(Guid.NewGuid().ToString("N")[..8]);
         await Seeder.SeedAsync(options, CancellationToken.None);
 
         var user = await Users.GetByNormalizedEmailAsync(options.DemoCustomerEmail.ToUpperInvariant(), CancellationToken.None);
-        user!.PasswordHash = "plain:changed-by-the-user";
-        await Users.UpdateAsync(user, CancellationToken.None);
+        var original = user!.PasswordHash;
+        user.PasswordHash = "plain:changed-by-a-visitor";
+
+        // Stronger than the guarantee this replaced. The seeder being insert-if-absent meant it would
+        // never restore a changed password, so "the seeder leaves it alone" was cold comfort — the real
+        // answer is that the change never lands. Enforced by the database, so a stray UPDATE cannot do
+        // it either.
+        await Assert.ThrowsAnyAsync<Exception>(() => Users.UpdateAsync(user, CancellationToken.None));
+
+        var after = await Users.GetByNormalizedEmailAsync(options.DemoCustomerEmail.ToUpperInvariant(), CancellationToken.None);
+        Assert.Equal(original, after!.PasswordHash);
+    }
+
+    [Fact]
+    public async Task Two_factor_cannot_be_enabled_on_a_demo_account()
+    {
+        var options = Options(Guid.NewGuid().ToString("N")[..8]);
+        await Seeder.SeedAsync(options, CancellationToken.None);
+
+        var user = await Users.GetByNormalizedEmailAsync(options.DemoAdminEmail.ToUpperInvariant(), CancellationToken.None);
+        user!.TwoFactorEnabled = true;
+
+        // The one action on a credentials-published demo that nothing recovers from: signing in would
+        // then need a code only the enroller has, the recovery codes went only to them, and turning it
+        // off needs a session nobody can get. Refused at the data layer as well as in the handler.
+        await Assert.ThrowsAnyAsync<Exception>(() => Users.UpdateAsync(user, CancellationToken.None));
+
+        Assert.False((await Users.GetByNormalizedEmailAsync(options.DemoAdminEmail.ToUpperInvariant(), CancellationToken.None))!.TwoFactorEnabled);
+    }
+
+    [Fact]
+    public async Task The_demo_accounts_orders_are_marked_as_exhibits()
+    {
+        var options = Options(Guid.NewGuid().ToString("N")[..8]);
+        await Seeder.SeedAsync(options, CancellationToken.None);
+
+        using var conn = await db.Connections.OpenAsync(CancellationToken.None);
+
+        // Showcase orders are not seeded at all; they were placed through the app, so they are found by
+        // belonging to a demo account. Idempotent and run on every boot, which is what retro-fits the
+        // flag onto a database that already holds them.
+        var email = options.DemoCustomerEmail;
+        var orderId = Guid.NewGuid();
+        await conn.ExecuteAsync(
+            @"insert into orders (id, order_number, email, ship_name, ship_line1, ship_city, ship_state,
+                                  ship_postal_code, subtotal, shipping_method, shipping, tax_state, tax_rate,
+                                  tax, total, status, created_at, updated_at)
+              values (@Id, @Number, @Email, 'Demo', '1 Main St', 'Springfield', 'CA', '90001',
+                      10, 'Standard', 0, 'CA', 0, 0, 10, 'Paid', now(), now())",
+            new { Id = orderId, Number = "WW-EX-" + Guid.NewGuid().ToString("N")[..8].ToUpperInvariant(), Email = email });
 
         await Seeder.SeedAsync(options, CancellationToken.None);
 
-        // Restarting the app must never reset a password someone chose.
-        var after = await Users.GetByNormalizedEmailAsync(options.DemoCustomerEmail.ToUpperInvariant(), CancellationToken.None);
-        Assert.Equal("plain:changed-by-the-user", after!.PasswordHash);
+        Assert.True(await conn.ExecuteScalarAsync<bool>(
+            "select is_protected from orders where id = @Id", new { Id = orderId }));
     }
 
     [Fact]

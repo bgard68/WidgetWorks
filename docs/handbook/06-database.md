@@ -17,8 +17,9 @@ server database does well:
   for correct UTC instants, and `boolean`.
 - **Expression & partial indexes** — `unique (upper(sku))`, `unique (user_id) where user_id
   is not null` (one cart per registered user, unlimited guest carts), `index (lower(email))`.
-- **Procedural guards** — a **PL/pgSQL trigger** enforces the immutable admin at the data
-  layer (defense in depth), which SQLite can’t express.
+- **Procedural guards** — a **PL/pgSQL trigger** enforces the protected demo accounts at the
+  data layer (defense in depth), which SQLite can’t express. See
+  [Protecting the demo](#protecting-the-demo).
 - **Array parameters** — `where order_id = any(@ids)` for efficient batched loads via Npgsql.
 - **Production parity** — the dev database matches what you’d run in production, so behavior
   (types, constraints, concurrency) is the same everywhere.
@@ -75,6 +76,7 @@ journal table so each runs once. Files live in
 | 0013 | IdempotencyKeys | `idempotency_keys` (composite PK `(scope, key)`, index on `created_at`) |
 | 0014 | PaymentReconciliation | `orders.payment_unconfirmed_at` (+ partial index on the unresolved set) |
 | 0015 | RefundTotals | `orders.refunded_total` (+ check constraint keeping it within the order) |
+| 0016 | DemoProtection | `orders.is_protected` (+ partial index); extends the protected-account trigger to block enabling 2FA |
 
 ## Schema overview
 
@@ -137,3 +139,41 @@ erDiagram
   of it: the ledger has no business holding a second copy of anyone's address. Rows are
   deleted after `Idempotency:RetentionHours` by the background sweep, which is what the
   `created_at` index is for. See [Payments](05-payments.md#retry-safety-on-checkout).
+
+## Protecting the demo
+
+The demo publishes its credentials, so every visitor arrives with Administrator rights. Most of what
+they can then do heals on the next restart — the seeder re-inserts missing accounts and re-seeds the
+catalogue. Three things did not heal, and these are the guards for them.
+
+**All three demo accounts are protected**, not just the administrator (`is_protected_admin`). The
+trigger from `0006` makes a protected row's email, role and **password hash** immutable and the row
+itself undeletable. The manager and customer had none of that before, which mattered most for the
+password: the seeder is insert-if-absent, so it deliberately never overwrites one — a changed demo
+password would have needed fixing by hand.
+
+**Enabling 2FA on a protected account is refused**, at the handler and again in the trigger. It is the
+only action a visitor can take that nothing recovers from: signing in afterwards needs a code only the
+enroller holds, the recovery codes were shown only to them, and turning it off needs a session nobody
+can obtain. Turning 2FA *off* stays allowed, so this cannot wedge an account the other way, and
+stamp rotation, lockout counters and `google_sub` linking are untouched — they cost nothing permanent.
+
+**`orders.is_protected` marks the showcase orders**, and refunding or cancelling one is refused.
+Nothing re-seeds orders, so either action would remove an exhibit for good. The flag is set by the
+seeder on every boot, by **owner** rather than by anything the seeder wrote — these orders were placed
+through the app, so they are found by belonging to a demo account. Running every boot is what
+retro-fits the flag onto a database that already holds them.
+
+Shipping and delivering a protected order stays allowed: fulfilment is a headline feature, and
+refusing every transition would mean nobody could try it on the orders already there.
+
+### What is deliberately not guarded
+
+- **Catalogue widgets can still be deleted.** `SeedWidgetsAsync` recreates them on the next restart,
+  so the damage is temporary.
+- **The demo administrator can still be locked out** by five deliberate wrong passwords. It heals
+  after the lockout window.
+
+Both are recoverable, which is why they are noted here rather than fixed. The general answer to
+everything in this section — including whatever has not been thought of — is a scheduled re-seed to a
+known baseline.

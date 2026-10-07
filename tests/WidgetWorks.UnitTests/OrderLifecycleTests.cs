@@ -159,4 +159,26 @@ public class OrderLifecycleTests
         public Task SendAsync(EmailMessage message, CancellationToken ct)
             => throw new InvalidOperationException("smtp is down");
     }
+
+    [Fact]
+    public async Task A_showcase_order_can_be_shipped_but_not_cancelled()
+    {
+        var (orders, email, order) = Setup();
+        order.IsProtected = true;
+
+        var handler = new UpdateOrderStatusHandler(orders, email, new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+
+        // Cancelling is terminal and releases the stock, and nothing re-seeds orders — so the exhibit
+        // would be gone for the next visitor.
+        var cancelled = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Cancelled, null), CancellationToken.None);
+        Assert.True(cancelled.IsFailure);
+        Assert.Contains("showcase orders", cancelled.Error);
+        Assert.Equal(OrderStatus.Paid, orders.Orders.Single().Status);
+
+        // Shipping it is allowed. Fulfilment is a headline feature of the demo, and refusing every
+        // transition would mean nobody could try it on the orders that are already there.
+        var shipped = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Shipped, "TRK-1"), CancellationToken.None);
+        Assert.True(shipped.IsSuccess);
+        Assert.Equal(OrderStatus.Shipped, orders.Orders.Single().Status);
+    }
 }

@@ -107,6 +107,13 @@ public sealed class Order
     /// </summary>
     public decimal RefundedTotal { get; set; }
 
+    /// <summary>
+    /// One of the demo's showcase orders. Refunding, cancelling or advancing it would take an exhibit
+    /// away permanently — nothing re-seeds orders — so the staff actions refuse it. Set by the seeder,
+    /// never through the API.
+    /// </summary>
+    public bool IsProtected { get; set; }
+
     /// <summary>What may still be refunded.</summary>
     public decimal RefundableRemaining => Total - RefundedTotal;
 

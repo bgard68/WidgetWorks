@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Common;
 using WidgetWorks.Domain.Orders;
+using WidgetWorks.Domain.Demo;
 
 namespace WidgetWorks.Application.Orders.Refund;
 
@@ -46,6 +47,13 @@ public sealed class RefundOrderHandler(
         if (order is null)
         {
             return Result<OrderView>.Fail("Order not found.");
+        }
+
+        if (order.IsProtected)
+        {
+            // A showcase order. Refunding it is irreversible and nothing re-seeds orders, so the exhibit
+            // would simply be gone for the next visitor.
+            return Result<OrderView>.Fail(DemoProtection.OrderMessage);
         }
 
         if (order.Status == OrderStatus.Refunded)

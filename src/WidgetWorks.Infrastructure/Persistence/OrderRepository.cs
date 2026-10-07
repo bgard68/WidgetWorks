@@ -8,7 +8,7 @@ namespace WidgetWorks.Infrastructure.Persistence;
 public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderRepository
 {
     private const string OrderColumns =
-        "id, order_number, user_id, email, ship_name, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country, subtotal, shipping_method, shipping, tax_state, tax_rate, tax, total, status, payment_provider, payment_reference, tracking_number, payment_unconfirmed_at, refunded_total, created_at, updated_at";
+        "id, order_number, user_id, email, ship_name, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country, subtotal, shipping_method, shipping, tax_state, tax_rate, tax, total, status, payment_provider, payment_reference, tracking_number, payment_unconfirmed_at, refunded_total, is_protected, created_at, updated_at";
 
     private const string ItemColumns =
         "id, order_id, widget_id, sku, name, unit_price, quantity, line_subtotal";

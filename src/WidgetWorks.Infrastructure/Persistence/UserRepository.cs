@@ -37,8 +37,12 @@ public sealed class UserRepository(IDbConnectionFactory factory) : IUserReposito
     {
         using var db = await factory.OpenAsync(ct);
         await db.ExecuteAsync(
-            @"insert into users (id, email, normalized_email, password_hash, role, security_stamp, is_protected_admin, two_factor_enabled, google_sub, failed_access_count, locked_until, created_at)
-              values (@Id, @Email, @NormalizedEmail, @PasswordHash, @Role, @SecurityStamp, @IsProtectedAdmin, @TwoFactorEnabled, @GoogleSub, @FailedAccessCount, @LockedUntil, @CreatedAt)",
+            // display_name belongs here as much as in the update. Leaving it out does not fail —
+            // Dapper simply ignores the property and the column defaults to null — so a caller that
+            // sets a name on a brand-new user gets no error and no name. That is how the Google
+            // profile name went missing.
+            @"insert into users (id, email, normalized_email, password_hash, role, security_stamp, is_protected_admin, two_factor_enabled, display_name, google_sub, failed_access_count, locked_until, created_at)
+              values (@Id, @Email, @NormalizedEmail, @PasswordHash, @Role, @SecurityStamp, @IsProtectedAdmin, @TwoFactorEnabled, @DisplayName, @GoogleSub, @FailedAccessCount, @LockedUntil, @CreatedAt)",
             user);
     }
 

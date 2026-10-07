@@ -55,6 +55,90 @@ public class GoogleLoginTests
     }
 
     [Fact]
+    public async Task A_new_google_user_is_named_from_their_google_profile()
+    {
+        // Google has already told us who this is. It is the only sign-up path here that learns a
+        // real name without asking for one, and dropping it left every such account greeted as
+        // "there" with no form in sight to correct it.
+        var users = new InMemoryUserRepository();
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-123", "new@example.com", true, "Ada Lovelace") };
+
+        await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.Equal("Ada Lovelace", users.Store.Values.Single().DisplayName);
+    }
+
+    [Fact]
+    public async Task A_google_profile_with_no_name_leaves_the_name_unset()
+    {
+        var users = new InMemoryUserRepository();
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-123", "new@example.com", true, null) };
+
+        await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.Null(users.Store.Values.Single().DisplayName);
+    }
+
+    [Fact]
+    public async Task An_over_long_google_name_is_truncated_rather_than_blocking_the_sign_in()
+    {
+        var users = new InMemoryUserRepository();
+        var validator = new FakeGoogleTokenValidator
+        {
+            Result = new GoogleIdentity("google-123", "new@example.com", true, new string('a', DisplayNamePolicy.MaxLength + 10)),
+        };
+
+        var result = await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(DisplayNamePolicy.MaxLength, users.Store.Values.Single().DisplayName!.Length);
+    }
+
+    [Fact]
+    public async Task Linking_google_fills_a_missing_name()
+    {
+        var users = new InMemoryUserRepository();
+        var existing = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "jane@example.com",
+            NormalizedEmail = "JANE@EXAMPLE.COM",
+            SecurityStamp = Guid.NewGuid(),
+            Role = UserRoles.Customer,
+        };
+        users.Store[existing.Id] = existing;
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-xyz", "jane@example.com", true, "Jane Doe") };
+
+        await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.Equal("Jane Doe", users.Store[existing.Id].DisplayName);
+    }
+
+    [Fact]
+    public async Task Linking_google_does_not_overwrite_a_name_the_user_chose()
+    {
+        // The other half of the rule, and the half worth protecting: someone who set their name to
+        // "Jay" should not find it replaced by their Google profile's "Jane Elizabeth Doe" merely
+        // because they used the Google button once.
+        var users = new InMemoryUserRepository();
+        var existing = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "jane@example.com",
+            NormalizedEmail = "JANE@EXAMPLE.COM",
+            SecurityStamp = Guid.NewGuid(),
+            Role = UserRoles.Customer,
+            DisplayName = "Jay",
+        };
+        users.Store[existing.Id] = existing;
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-xyz", "jane@example.com", true, "Jane Elizabeth Doe") };
+
+        await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.Equal("Jay", users.Store[existing.Id].DisplayName);
+    }
+
+    [Fact]
     public async Task Existing_google_sub_signs_in_same_user()
     {
         var users = new InMemoryUserRepository();

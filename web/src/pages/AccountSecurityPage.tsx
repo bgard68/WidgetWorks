@@ -3,6 +3,7 @@ import { AccountNav } from '../components/AccountNav'
 import { PasswordField } from '../components/PasswordField'
 import { PasswordRequirements } from '../components/PasswordRequirements'
 import { meetsPasswordPolicy } from '../lib/passwordPolicy'
+import { MAX_DISPLAY_NAME_LENGTH } from '../lib/displayName'
 import { useProfile } from '../account/useProfile'
 import { api, setSession } from '../api/client'
 import type { AuthResponse, ProfileView } from '../api/types'
@@ -74,7 +75,12 @@ function NameSection({ profile, onSaved }: { profile: ProfileView; onSaved: (p: 
         <p className="help">Used to greet you and on your orders. Leave it blank if you would rather not say.</p>
         <label className="field">
           <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="Jane Doe" />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={MAX_DISPLAY_NAME_LENGTH}
+            placeholder="Jane Doe"
+          />
         </label>
         {error && <p className="alert alert-err">{error}</p>}
         {saved && <p className="alert alert-ok">Name saved.</p>}

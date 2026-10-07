@@ -557,6 +557,41 @@ describe('RegisterPage', () => {
     })
   })
 
+  it('passes the name along when the optional field is filled in', async () => {
+    const calls = stubFetch([['/auth/register', () => ({})]])
+    const user = userEvent.setup()
+
+    renderWithProviders(<RegisterPage />, { at: '/register', routes: { '/login': <h1>Sign in</h1> } })
+
+    await user.type(screen.getByLabelText(/Your name/i), 'Ada Lovelace')
+    await user.type(screen.getByLabelText(/Email/i), 'new@example.com')
+    await user.type(screen.getByLabelText(/^Password$/i), 'Str0ng!Passw0rd')
+    await user.click(screen.getByRole('button', { name: /Create account|Create your account|Sign up/i }))
+
+    await waitFor(() => {
+      const post = calls.find((c) => c.url.includes('/auth/register'))
+      expect(JSON.parse(String(post?.init?.body))).toMatchObject({ displayName: 'Ada Lovelace' })
+    })
+  })
+
+  it('still creates the account when the name is left blank', async () => {
+    // Optional has to mean optional. The field sits first in the form, so if it ever became a
+    // barrier it would be a barrier to the whole sign-up.
+    const calls = stubFetch([['/auth/register', () => ({})]])
+    const user = userEvent.setup()
+
+    renderWithProviders(<RegisterPage />, { at: '/register', routes: { '/login': <h1>Sign in</h1> } })
+
+    await user.type(screen.getByLabelText(/Email/i), 'new@example.com')
+    await user.type(screen.getByLabelText(/^Password$/i), 'Str0ng!Passw0rd')
+    await user.click(screen.getByRole('button', { name: /Create account|Create your account|Sign up/i }))
+
+    await waitFor(() => {
+      const post = calls.find((c) => c.url.includes('/auth/register'))
+      expect(JSON.parse(String(post?.init?.body))).not.toHaveProperty('displayName')
+    })
+  })
+
   it('shows the API rejection and leaves no session behind', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
       JSON.stringify({ error: 'Unable to register with the provided details.' }),

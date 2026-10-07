@@ -113,14 +113,15 @@ public sealed class DbSeeder(IDbConnectionFactory factory, IPasswordHasher hashe
         // published demo credentials need, and the manager and customer had none of it. Deleting them was
         // survivable (the seeder re-inserts), but a changed password was not: this is insert-if-absent, so
         // it deliberately never overwrites one.
-        await UpsertUserAsync(options.DemoAdminEmail, options.DemoAdminPassword, UserRoles.Administrator, isProtected: true, ct);
-        await UpsertUserAsync(options.DemoCustomerEmail, options.DemoCustomerPassword, UserRoles.Customer, isProtected: true, ct);
-        await UpsertUserAsync(options.DemoManagerEmail, options.DemoManagerPassword, UserRoles.Manager, isProtected: true, ct);
+        await UpsertUserAsync(options.DemoAdminEmail, options.DemoAdminPassword, UserRoles.Administrator, "Demo Administrator", isProtected: true, ct);
+        await UpsertUserAsync(options.DemoCustomerEmail, options.DemoCustomerPassword, UserRoles.Customer, "Demo Customer", isProtected: true, ct);
+        await UpsertUserAsync(options.DemoManagerEmail, options.DemoManagerPassword, UserRoles.Manager, "Demo Manager", isProtected: true, ct);
+        await BackfillDemoDisplayNamesAsync(options, ct);
         await SeedWidgetsAsync(ct);
         await ProtectDemoExhibitsAsync(options, ct);
     }
 
-    private async Task UpsertUserAsync(string email, string password, string role, bool isProtected, CancellationToken ct)
+    private async Task UpsertUserAsync(string email, string password, string role, string displayName, bool isProtected, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         {
@@ -138,8 +139,8 @@ public sealed class DbSeeder(IDbConnectionFactory factory, IPasswordHasher hashe
         }
 
         await db.ExecuteAsync(
-            @"insert into users (id, email, normalized_email, password_hash, role, security_stamp, is_protected_admin, two_factor_enabled, google_sub, failed_access_count, locked_until, created_at)
-              values (@Id, @Email, @NormalizedEmail, @PasswordHash, @Role, @SecurityStamp, @IsProtectedAdmin, false, null, 0, null, @CreatedAt)",
+            @"insert into users (id, email, normalized_email, password_hash, role, security_stamp, is_protected_admin, two_factor_enabled, display_name, google_sub, failed_access_count, locked_until, created_at)
+              values (@Id, @Email, @NormalizedEmail, @PasswordHash, @Role, @SecurityStamp, @IsProtectedAdmin, false, @DisplayName, null, 0, null, @CreatedAt)",
             new
             {
                 Id = Guid.NewGuid(),
@@ -149,7 +150,60 @@ public sealed class DbSeeder(IDbConnectionFactory factory, IPasswordHasher hashe
                 Role = role,
                 SecurityStamp = Guid.NewGuid(),
                 IsProtectedAdmin = isProtected,
+                DisplayName = DisplayNamePolicy.Normalize(displayName),
                 CreatedAt = clock.GetUtcNow(),
+            });
+    }
+
+    /// <summary>
+    /// Gives the demo accounts a name on databases where they already exist.
+    ///
+    /// The insert above only runs for an account that is absent, which is the right behaviour for a
+    /// password and the wrong one here: every database already running has all three demo rows, so
+    /// without this the greeting would stay "Hello, there" on exactly the deployments anyone is
+    /// looking at. The names are part of the exhibit, not part of the credentials.
+    ///
+    /// Only null is filled. A name an administrator set is left alone, and because the write is
+    /// conditional the whole thing is idempotent — it matches nothing from the second startup
+    /// onward.
+    ///
+    /// One statement rather than three, which is about where this runs rather than how much work it
+    /// is. The database is Neon, which suspends when idle, so a startup round trip can cost a cold
+    /// wake rather than a few milliseconds — and the three updates match no rows on every boot
+    /// after the first. Paying that once instead of three times is free to write and the kind of
+    /// thing that keeps a free tier free.
+    /// </summary>
+    private async Task BackfillDemoDisplayNamesAsync(SeedOptions options, CancellationToken ct)
+    {
+        var names = new[]
+        {
+            (Email: options.DemoAdminEmail, DisplayName: "Demo Administrator"),
+            (Email: options.DemoCustomerEmail, DisplayName: "Demo Customer"),
+            (Email: options.DemoManagerEmail, DisplayName: "Demo Manager"),
+        }
+            .Where(n => !string.IsNullOrWhiteSpace(n.Email))
+            .Select(n => new { Normalized = n.Email.Trim().ToUpperInvariant(), n.DisplayName })
+            .ToArray();
+
+        if (names.Length == 0)
+        {
+            return;
+        }
+
+        using var db = await factory.OpenAsync(ct);
+
+        // unnest pairs the two arrays into rows, so the whole set travels as two parameters rather
+        // than as generated SQL — no string building, and the shape does not change with the count.
+        await db.ExecuteAsync(
+            @"update users u
+                 set display_name = v.display_name
+                from unnest(@Emails::text[], @DisplayNames::text[]) as v(normalized_email, display_name)
+               where u.normalized_email = v.normalized_email
+                 and u.display_name is null",
+            new
+            {
+                Emails = names.Select(n => n.Normalized).ToArray(),
+                DisplayNames = names.Select(n => n.DisplayName).ToArray(),
             });
     }
 

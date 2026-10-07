@@ -1,5 +1,6 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Common;
+using WidgetWorks.Domain.Users;
 
 namespace WidgetWorks.Application.Account.Profile;
 
@@ -56,7 +57,7 @@ public sealed class UpdateProfileHandler(IUserRepository users, IAuditLog audit)
     /// someone's essay. Names are not usernames here — there is no uniqueness and nothing resolves
     /// by them, so the only limit that matters is display.
     /// </summary>
-    public const int MaxLength = 60;
+    public const int MaxLength = DisplayNamePolicy.MaxLength;
 
     public async Task<Result<ProfileView>> Handle(UpdateProfileCommand command, CancellationToken ct)
     {
@@ -66,17 +67,10 @@ public sealed class UpdateProfileHandler(IUserRepository users, IAuditLog audit)
             return Result<ProfileView>.Fail("User not found.");
         }
 
-        // Trimmed, and blank means "no name" rather than an empty string — so the greeting falls back
-        // to the neutral one instead of rendering "Hello, " with nothing after it.
-        var name = command.DisplayName?.Trim();
-        if (string.IsNullOrEmpty(name))
+        var name = DisplayNamePolicy.Normalize(command.DisplayName);
+        if (DisplayNamePolicy.IsTooLong(name))
         {
-            name = null;
-        }
-
-        if (name is { Length: > MaxLength })
-        {
-            return Result<ProfileView>.Fail($"Name must be {MaxLength} characters or fewer.");
+            return Result<ProfileView>.Fail(DisplayNamePolicy.TooLongMessage);
         }
 
         user.DisplayName = name;

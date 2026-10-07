@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using WidgetWorks.Application.Checkout.Reconcile;
 using WidgetWorks.Application.Checkout.ReleaseStale;
 using WidgetWorks.WebApi.Hosting;
 using Xunit;
@@ -46,7 +47,7 @@ public class ReservationSweeperTests
     {
         // Arrange — the setting a host that should not run background work uses.
         var log = new CapturingLogger();
-        var sweeper = new ReservationSweeper(ScopeFactory(), new ReservationOptions { Enabled = false }, log);
+        var sweeper = new ReservationSweeper(ScopeFactory(), new ReservationOptions { Enabled = false }, new ReconciliationOptions(), log);
 
         // Act
         await sweeper.StartAsync(CancellationToken.None);
@@ -73,6 +74,7 @@ public class ReservationSweeperTests
         var sweeper = new ReservationSweeper(
             ScopeFactory(),
             new ReservationOptions { Enabled = true, SweepIntervalMinutes = 5, ExpireAfterMinutes = 15 },
+            new ReconciliationOptions(),
             log);
 
         // Act

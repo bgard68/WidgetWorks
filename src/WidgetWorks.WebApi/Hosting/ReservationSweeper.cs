@@ -1,3 +1,5 @@
+using WidgetWorks.Application.Checkout.PlaceOrder;
+using WidgetWorks.Application.Checkout.Reconcile;
 using WidgetWorks.Application.Checkout.ReleaseStale;
 
 namespace WidgetWorks.WebApi.Hosting;
@@ -12,6 +14,7 @@ namespace WidgetWorks.WebApi.Hosting;
 public sealed class ReservationSweeper(
     IServiceScopeFactory scopes,
     ReservationOptions options,
+    ReconciliationOptions reconciliation,
     ILogger<ReservationSweeper> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -39,10 +42,27 @@ public sealed class ReservationSweeper(
             // connection for the lifetime of the process.
             using var scope = scopes.CreateScope();
             var handler = scope.ServiceProvider.GetRequiredService<ReleaseStaleReservationsHandler>();
+            var purge = scope.ServiceProvider.GetRequiredService<PurgeIdempotencyKeysHandler>();
+            var reconcile = scope.ServiceProvider.GetRequiredService<ReconcileUnconfirmedPaymentsHandler>();
 
             try
             {
+                // Reconciliation runs FIRST, and the order matters. An order whose charge was never
+                // confirmed is exempt from the stale sweep precisely so it cannot be failed on a
+                // timer; resolving it here first means that by the time the sweep looks, any order it
+                // can see has a known payment outcome.
+                if (reconciliation.Enabled)
+                {
+                    await reconcile.Handle(stoppingToken);
+                }
+
                 await handler.Handle(stoppingToken);
+
+                // Rides along on this tick rather than bringing its own timer. Both are the same
+                // kind of work — forgetting something whose time has passed — and a second
+                // PeriodicTimer would wake the serverless database on its own schedule, which is
+                // precisely the cost this interval was chosen to avoid.
+                await purge.Handle(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

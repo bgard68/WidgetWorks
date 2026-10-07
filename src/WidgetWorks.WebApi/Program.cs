@@ -17,6 +17,9 @@ using WidgetWorks.WebApi.Checkout;
 using WidgetWorks.WebApi.Orders;
 using WidgetWorks.WebApi.Payments;
 using WidgetWorks.WebApi.Security;
+using WidgetWorks.Application.Checkout.PlaceOrder;
+using WidgetWorks.Application.Checkout.Reconcile;
+using WidgetWorks.Application.Orders.Admin;
 using WidgetWorks.Application.Checkout.ReleaseStale;
 using WidgetWorks.WebApi.Diagnostics;
 using WidgetWorks.WebApi.Hosting;
@@ -38,6 +41,23 @@ var reservationOptions = new ReservationOptions();
 builder.Configuration.GetSection("Reservations").Bind(reservationOptions);
 builder.Services.AddSingleton(reservationOptions);
 builder.Services.AddHostedService<ReservationSweeper>();
+
+// Charges the provider never confirmed are chased on the same sweep, before stale reservations are
+// released — an unconfirmed order must have a known outcome before anything can expire it.
+var reconciliationOptions = new ReconciliationOptions();
+builder.Configuration.GetSection("Reconciliation").Bind(reconciliationOptions);
+builder.Services.AddSingleton(reconciliationOptions);
+builder.Services.AddHostedService<PaymentReconciliationSweeper>();
+
+// Thresholds for the staff review list — what counts as a possible duplicate, and how much to show.
+var orderReviewOptions = new OrderReviewOptions();
+builder.Configuration.GetSection("OrderReview").Bind(orderReviewOptions);
+builder.Services.AddSingleton(orderReviewOptions);
+
+// Checkout idempotency keys are remembered for a window and then forgotten, on the same sweep.
+var idempotencyOptions = new IdempotencyOptions();
+builder.Configuration.GetSection("Idempotency").Bind(idempotencyOptions);
+builder.Services.AddSingleton(idempotencyOptions);
 
 // CORS for the browser SPA (origins from config; sensible localhost defaults for dev).
 const string SpaCorsPolicy = "spa";

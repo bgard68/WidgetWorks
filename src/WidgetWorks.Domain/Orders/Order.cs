@@ -12,6 +12,14 @@ public static class OrderStatus
 
     public const string Paid = "Paid";
     public const string PaymentFailed = "PaymentFailed";
+    /// <summary>
+    /// A settled order whose money has been given back. Reached only through the refund use case,
+    /// never through the generic status endpoint — it is deliberately absent from
+    /// <see cref="Transitions"/> so that no one can mark an order refunded without a refund actually
+    /// having been issued at the provider.
+    /// </summary>
+    public const string Refunded = "Refunded";
+
     public const string Shipped = "Shipped";
     public const string Delivered = "Delivered";
     public const string Cancelled = "Cancelled";
@@ -83,6 +91,24 @@ public sealed class Order
     public string? PaymentReference { get; set; }
 
     public string? TrackingNumber { get; set; }
+
+    /// <summary>
+    /// When the provider failed to tell us what became of the charge. Non-null means the order is
+    /// awaiting <em>reconciliation</em>, not awaiting the customer — it holds its reservation and is
+    /// exempt from the stale-reservation sweep until the real outcome is known.
+    /// </summary>
+    public DateTimeOffset? PaymentUnconfirmedAt { get; set; }
+
+    /// <summary>
+    /// How much of this order has been refunded so far. Cumulative, so several partial refunds cannot
+    /// add up to more than was charged, and the order only becomes
+    /// <see cref="OrderStatus.Refunded"/> once it reaches <see cref="Total"/> — a part-refunded order
+    /// is still a paid order with goods owed.
+    /// </summary>
+    public decimal RefundedTotal { get; set; }
+
+    /// <summary>What may still be refunded.</summary>
+    public decimal RefundableRemaining => Total - RefundedTotal;
 
     public DateTimeOffset CreatedAt { get; set; }
 

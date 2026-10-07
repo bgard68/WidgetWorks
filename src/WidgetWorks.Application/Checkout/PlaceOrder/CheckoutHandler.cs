@@ -41,6 +41,7 @@ public sealed class CheckoutHandler(
     OrderPricer pricer,
     IPaymentGateway payments,
     IEmailSender email,
+    IReconciliationSignal reconciliation,
     TimeProvider clock,
     ILogger<CheckoutHandler> logger)
 {
@@ -92,6 +93,41 @@ public sealed class CheckoutHandler(
 
         var payment = await payments.ChargeAsync(
             new PaymentRequest(order.OrderNumber, order.Total, "usd", order.Email, command.PaymentToken), ct);
+
+        if (payment.Status == PaymentStatus.Indeterminate)
+        {
+            // The provider never said what happened, so the money may already be gone. Treating this
+            // as a decline would release the reservation and tell the customer their payment failed —
+            // the one mistake worth engineering around here. Park it instead: the reservation stays
+            // put, the stale sweep leaves it alone, and reconciliation settles it from the provider's
+            // own record.
+            if (!await orders.MarkPaymentUnconfirmedAsync(order.Id, payment.Provider, clock.GetUtcNow(), ct))
+            {
+                return Fail("The payment could not be confirmed. Please check your orders before retrying.");
+            }
+
+            order.Status = OrderStatus.AwaitingPayment;
+
+            // The cart goes, exactly as it does for an async authorization. Leaving it would let the
+            // shopper re-submit a basket whose payment may already have been taken, and a second order
+            // under a fresh key is precisely the duplicate this whole change exists to prevent. The
+            // order is the record now; if reconciliation finds it failed, they re-add and try again.
+            await carts.DeleteAsync(cart.Id, ct);
+
+            // Tell the reconciler now rather than leaving it to find out on its next sweep. This order
+            // is holding stock over a charge that may have been taken, so minutes matter.
+            reconciliation.Notify();
+
+            logger.LogError(
+                "Order {OrderNumber} placed with an unconfirmed charge at {Provider}; awaiting reconciliation. {Error}",
+                order.OrderNumber,
+                payment.Provider,
+                payment.Error);
+
+            return Result<CheckoutResult>.Success(new CheckoutResult(
+                order.OrderNumber, order.Id, OrderStatus.AwaitingPayment, order.Total,
+                payment.Provider, string.Empty));
+        }
 
         if (payment.Status == PaymentStatus.Declined)
         {

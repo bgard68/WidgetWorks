@@ -38,7 +38,7 @@ public class CheckoutTests
     }
 
     private static CheckoutHandler Handler(Ctx c, MockPaymentGateway gateway, IEmailSender email, ILogger<CheckoutHandler>? logger = null)
-        => new(c.Carts, c.Widgets, c.Orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), gateway, email, Clock(), logger ?? NullLogger<CheckoutHandler>.Instance);
+        => new(c.Carts, c.Widgets, c.Orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), gateway, email, new FakeReconciliationSignal(), Clock(), logger ?? NullLogger<CheckoutHandler>.Instance);
 
     [Fact]
     public async Task Successful_checkout_pays_reserves_clears_cart_and_emails_receipt()
@@ -126,7 +126,7 @@ public class CheckoutTests
         var carts = new InMemoryCartRepository();
         var cart = await carts.CreateAsync(null, CancellationToken.None);
         var orders = new InMemoryOrderRepository(widgets);
-        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), new FakeEmailSender(), Clock(), NullLogger<CheckoutHandler>.Instance);
+        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), new FakeEmailSender(), new FakeReconciliationSignal(), Clock(), NullLogger<CheckoutHandler>.Instance);
 
         var result = await handler.Handle(new CheckoutCommand(cart.Id, null, "jane@example.com", Address(), "Standard", "tok_ok"), CancellationToken.None);
 

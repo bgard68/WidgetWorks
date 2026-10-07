@@ -1,4 +1,7 @@
 using System.Text.Json;
+using WidgetWorks.Application.Checkout.PlaceOrder;
+using WidgetWorks.Application.Checkout.Reconcile;
+using WidgetWorks.Application.Orders.Admin;
 using WidgetWorks.Application.Checkout.ReleaseStale;
 using WidgetWorks.WebApi.RateLimiting;
 using Xunit;
@@ -109,6 +112,93 @@ public class ShippedConfigurationTests
 
         Assert.True(shipped.TryGetProperty("Enabled", out var enabled));
         Assert.Equal(code.Enabled, enabled.GetBoolean());
+    }
+
+    [Fact]
+    public void The_idempotency_settings_in_the_file_match_the_code_defaults()
+    {
+        var shipped = Section("Idempotency");
+        var code = new IdempotencyOptions();
+
+        Assert.Equal(code.RetentionHours, Number(shipped, "RetentionHours"));
+        Assert.Equal(code.MaxKeyLength, Number(shipped, "MaxKeyLength"));
+    }
+
+    [Fact]
+    public void The_reconciliation_settings_in_the_file_match_the_code_defaults()
+    {
+        var shipped = Section("Reconciliation");
+        var code = new ReconciliationOptions();
+
+        Assert.Equal(code.BatchSize, Number(shipped, "BatchSize"));
+        Assert.Equal(code.EscalateAfterHours, Number(shipped, "EscalateAfterHours"));
+
+        Assert.True(shipped.TryGetProperty("Enabled", out var enabled));
+        Assert.Equal(code.Enabled, enabled.GetBoolean());
+
+        // On by default, and that is deliberate: checkout now parks an unconfirmed charge instead of
+        // failing it, which is only safe because something comes back to resolve it. Shipping with
+        // this off would leave those orders holding stock for ever.
+        Assert.True(code.Enabled);
+    }
+
+    [Fact]
+    public void An_unreconciled_order_is_escalated_before_a_shopper_would_give_up_on_it()
+    {
+        var escalate = TimeSpan.FromHours(new ReconciliationOptions().EscalateAfterHours);
+        var sweep = TimeSpan.FromMinutes(new ReservationOptions().SweepIntervalMinutes);
+
+        // The sweep has to run several times inside the window, or "unresolved after N hours" would
+        // mean "we only looked once". Nothing is decided at escalation — it is a log for a human —
+        // but it is the only signal that an order is stuck, so it must not fire on a single bad probe.
+        Assert.True(
+            escalate > sweep * 2,
+            $"escalating after {escalate} gives the {sweep} sweep too few attempts to resolve an order first.");
+    }
+
+    [Fact]
+    public void The_reconciliation_cadence_is_fast_while_busy_and_cheap_while_quiet()
+    {
+        var shipped = Section("Reconciliation");
+        var code = new ReconciliationOptions();
+
+        Assert.Equal(code.BusyIntervalSeconds, Number(shipped, "BusyIntervalSeconds"));
+        Assert.Equal(code.IdleIntervalMinutes, Number(shipped, "IdleIntervalMinutes"));
+
+        // Busy has to be far shorter than idle, or the two settings mean the same thing. The order
+        // being chased may already have been charged, so a minute is the right order of magnitude.
+        Assert.True(code.BusyIntervalSeconds <= 120, "an unconfirmed charge should be chased within a couple of minutes.");
+        Assert.True(
+            TimeSpan.FromMinutes(code.IdleIntervalMinutes) > TimeSpan.FromSeconds(code.BusyIntervalSeconds) * 5,
+            "the idle wait should be much longer than the busy one; checkout signals the worker directly, so polling is the backstop.");
+    }
+
+    [Fact]
+    public void The_duplicate_review_window_is_the_span_of_a_mistake_not_of_a_shopping_trip()
+    {
+        var shipped = Section("OrderReview");
+        var code = new OrderReviewOptions();
+
+        Assert.Equal(code.DuplicateWindowMinutes, Number(shipped, "DuplicateWindowMinutes"));
+        Assert.Equal(code.Limit, Number(shipped, "Limit"));
+
+        // Wide enough to catch a double-submit, narrow enough not to flag a customer who genuinely
+        // ordered the same thing twice in an afternoon. A queue that cries wolf goes unread.
+        Assert.InRange(code.DuplicateWindowMinutes, 1, 60);
+    }
+
+    [Fact]
+    public void Idempotency_keys_outlive_the_sweep_that_forgets_them()
+    {
+        var retention = TimeSpan.FromHours(new IdempotencyOptions().RetentionHours);
+        var sweep = TimeSpan.FromMinutes(new ReservationOptions().SweepIntervalMinutes);
+
+        // Retention shorter than the interval that enforces it would make the window meaningless:
+        // keys would survive by however long it took the sweep to come round, not by the figure in
+        // the file. It also has to clear any client's retry budget, which a day comfortably does.
+        Assert.True(
+            retention > sweep,
+            "Idempotency keys should be retained for longer than the gap between sweeps.");
     }
 
     [Fact]

@@ -253,9 +253,47 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         order.Status = OrderStatus.AwaitingPayment;
         order.PaymentProvider = provider;
         order.PaymentReference = reference;
+        order.PaymentUnconfirmedAt = null;
         order.UpdatedAt = now;
         return Task.FromResult(true);
     }
+
+    public Task<bool> MarkPaymentUnconfirmedAsync(Guid orderId, string provider, DateTimeOffset now, CancellationToken ct)
+    {
+        var order = Orders.First(o => o.Id == orderId);
+        if (order.Status != OrderStatus.Pending)
+        {
+            return Task.FromResult(false);
+        }
+
+        order.Status = OrderStatus.AwaitingPayment;
+        order.PaymentProvider = provider;
+        order.PaymentUnconfirmedAt = now;
+        order.UpdatedAt = now;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> RecordPaymentReferenceAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    {
+        var order = Orders.First(o => o.Id == orderId);
+        if (order.Status != OrderStatus.AwaitingPayment)
+        {
+            return Task.FromResult(false);
+        }
+
+        order.PaymentProvider = provider;
+        order.PaymentReference = reference;
+        order.PaymentUnconfirmedAt = null;
+        order.UpdatedAt = now;
+        return Task.FromResult(true);
+    }
+
+    public Task<IReadOnlyList<Order>> GetUnconfirmedPaymentsAsync(int limit, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<Order>>(Orders
+            .Where(o => o.PaymentUnconfirmedAt is not null)
+            .OrderBy(o => o.PaymentUnconfirmedAt)
+            .Take(limit)
+            .ToList());
 
     public Task<bool> MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
     {
@@ -268,6 +306,10 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         order.Status = OrderStatus.Paid;
         order.PaymentProvider = provider;
         order.PaymentReference = reference;
+
+        // Mirrors the repository: settling an order is what clears the unconfirmed mark, so a
+        // reconciled order stops being picked up by the next pass.
+        order.PaymentUnconfirmedAt = null;
         order.UpdatedAt = now;
         return Task.FromResult(true);
     }
@@ -284,6 +326,7 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         }
 
         stored.Status = OrderStatus.PaymentFailed;
+        stored.PaymentUnconfirmedAt = null;
         stored.UpdatedAt = now;
         foreach (var item in order.Items)
         {
@@ -307,7 +350,7 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
         stored.UpdatedAt = now;
 
         // Mirrors OrderRepository: shipping converts the reservation into a real
-        // decrement, cancelling hands it back, delivery moves nothing.
+        // decrement, cancelling or refunding hands it back, delivery moves nothing.
         foreach (var item in order.Items)
         {
             if (!widgets.Store.TryGetValue(item.WidgetId, out var w))
@@ -320,7 +363,7 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
                 w.QuantityOnHand -= item.Quantity;
                 w.QuantityReserved -= item.Quantity;
             }
-            else if (order.Status == OrderStatus.Cancelled)
+            else if (order.Status is OrderStatus.Cancelled or OrderStatus.Refunded)
             {
                 w.QuantityReserved -= item.Quantity;
             }
@@ -331,10 +374,61 @@ public sealed class InMemoryOrderRepository(InMemoryWidgetRepository widgets) : 
 
     public Task<IReadOnlyList<Order>> GetStaleAwaitingPaymentAsync(DateTimeOffset cutoff, int limit, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<Order>>(Orders
-            .Where(o => o.Status == OrderStatus.AwaitingPayment && o.UpdatedAt < cutoff)
+            // Mirrors the repository's exemption: an order whose charge was never confirmed must not
+            // be failed on a timer, because the money may already have been taken.
+            .Where(o => o.Status == OrderStatus.AwaitingPayment && o.UpdatedAt < cutoff && o.PaymentUnconfirmedAt is null)
             .OrderBy(o => o.UpdatedAt)
             .Take(limit)
             .ToList());
+
+    public Task<bool> RecordRefundAsync(Guid orderId, decimal refundedTotal, bool fullyRefunded, DateTimeOffset now, CancellationToken ct)
+    {
+        var order = Orders.First(o => o.Id == orderId);
+
+        // Mirrors the repository's guard: still Paid, and the running total genuinely rising. Two
+        // refunds racing cannot both apply, which is the whole reason the real one is a compare-and-set.
+        if (order.Status != OrderStatus.Paid || order.RefundedTotal >= refundedTotal)
+        {
+            return Task.FromResult(false);
+        }
+
+        order.RefundedTotal = refundedTotal;
+        order.Status = fullyRefunded ? OrderStatus.Refunded : OrderStatus.Paid;
+        order.UpdatedAt = now;
+
+        // Only a fully refunded order hands its stock back; a part refund still owes goods.
+        if (fullyRefunded)
+        {
+            foreach (var item in order.Items)
+            {
+                if (widgets.Store.TryGetValue(item.WidgetId, out var w))
+                {
+                    w.QuantityReserved -= item.Quantity;
+                }
+            }
+        }
+
+        return Task.FromResult(true);
+    }
+
+    public Task<IReadOnlyList<Order>> GetPossibleDuplicatesAsync(TimeSpan window, int limit, CancellationToken ct)
+    {
+        // Mirrors the SQL: same customer, same total, inside the window, neither side already written
+        // off. A retry after a decline is the system working, so failed and cancelled orders are out.
+        static bool Live(Order o) => o.Status is not (OrderStatus.PaymentFailed or OrderStatus.Cancelled);
+
+        return Task.FromResult<IReadOnlyList<Order>>(Orders
+            .Where(o => Live(o) && Orders.Any(d =>
+                d.Id != o.Id &&
+                Live(d) &&
+                d.Email == o.Email &&
+                d.Total == o.Total &&
+                (d.CreatedAt - o.CreatedAt).Duration() <= window))
+            .OrderBy(o => o.Email)
+            .ThenByDescending(o => o.CreatedAt)
+            .Take(limit)
+            .ToList());
+    }
 
     public Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
         => Task.FromResult(Orders.FirstOrDefault(o => o.Id == id));
@@ -454,9 +548,16 @@ public sealed class RecordingAuditLog : IAuditLog
 {
     public readonly List<string> Actions = new();
 
+    /// <summary>
+    /// The whole entry, not just its name. An audit trail that records "a refund happened" without who
+    /// or how much is not an audit trail, so the tests have to be able to assert on both.
+    /// </summary>
+    public readonly List<(Guid? UserId, string Action, string? Detail)> Entries = new();
+
     public Task WriteAsync(Guid? userId, string action, string? detail, CancellationToken ct)
     {
         Actions.Add(action);
+        Entries.Add((userId, action, detail));
         return Task.CompletedTask;
     }
 }
@@ -588,4 +689,90 @@ public sealed class RecordingLogger<T> : ILogger<T>
         Exception? exception,
         Func<TState, Exception?, string> formatter)
         => Entries.Add((logLevel, formatter(state, exception), exception));
+}
+
+/// <summary>
+/// The idempotency ledger in a dictionary, with the real one's contract: the claim is atomic, so
+/// exactly one concurrent caller is told it owns the key.
+///
+/// The locking here is not decoration. These tests fire concurrent claims on purpose, and a fake
+/// that checked then inserted without holding a lock would pass them by being broken in the same
+/// way the code under test must not be.
+/// </summary>
+public sealed class InMemoryIdempotencyStore : IIdempotencyStore
+{
+    private readonly Lock _gate = new();
+
+    public readonly Dictionary<string, Row> Rows = new();
+
+    public int Claims { get; private set; }
+
+    public sealed record Row(string RequestHash, string Status, string? Response, string? Error, DateTimeOffset CreatedAt);
+
+    public Task<IdempotencyRecord> TryClaimAsync(string scope, string key, string requestHash, DateTimeOffset now, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            Claims++;
+            var id = Id(scope, key);
+
+            if (!Rows.TryGetValue(id, out var existing))
+            {
+                Rows[id] = new Row(requestHash, "in_progress", null, null, now);
+                return Task.FromResult(new IdempotencyRecord(IdempotencyClaim.Claimed, null, null));
+            }
+
+            if (!string.Equals(existing.RequestHash, requestHash, StringComparison.Ordinal))
+            {
+                return Task.FromResult(new IdempotencyRecord(IdempotencyClaim.PayloadMismatch, null, null));
+            }
+
+            return Task.FromResult(existing.Status == "completed"
+                ? new IdempotencyRecord(IdempotencyClaim.Replay, existing.Response, existing.Error)
+                : new IdempotencyRecord(IdempotencyClaim.InFlight, null, null));
+        }
+    }
+
+    public Task CompleteAsync(string scope, string key, string? response, string? error, DateTimeOffset now, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            var id = Id(scope, key);
+            if (Rows.TryGetValue(id, out var existing) && existing.Status == "in_progress")
+            {
+                Rows[id] = existing with { Status = "completed", Response = response, Error = error };
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    public Task<int> PurgeExpiredAsync(DateTimeOffset cutoff, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            var gone = Rows.Where(r => r.Value.CreatedAt < cutoff).Select(r => r.Key).ToList();
+            foreach (var id in gone)
+            {
+                Rows.Remove(id);
+            }
+
+            return Task.FromResult(gone.Count);
+        }
+    }
+
+    private static string Id(string scope, string key) => scope + "|" + key;
+}
+
+/// <summary>
+/// Records the nudges checkout sends the reconciler, so a test can assert that an unconfirmed charge
+/// does not quietly wait for the next sweep.
+/// </summary>
+public sealed class FakeReconciliationSignal : IReconciliationSignal
+{
+    public int Notifications { get; private set; }
+
+    public void Notify() => Notifications++;
+
+    public Task WaitAsync(TimeSpan timeout, CancellationToken ct) => Task.CompletedTask;
 }

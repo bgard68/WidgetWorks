@@ -218,6 +218,21 @@ public class ConcurrentSettlementTests
         public Task<bool> MarkAwaitingPaymentAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
             => inner.MarkAwaitingPaymentAsync(orderId, provider, reference, now, ct);
 
+        public Task<bool> MarkPaymentUnconfirmedAsync(Guid orderId, string provider, DateTimeOffset now, CancellationToken ct)
+            => inner.MarkPaymentUnconfirmedAsync(orderId, provider, now, ct);
+
+        public Task<IReadOnlyList<Order>> GetUnconfirmedPaymentsAsync(int limit, CancellationToken ct)
+            => inner.GetUnconfirmedPaymentsAsync(limit, ct);
+
+        public Task<bool> RecordPaymentReferenceAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+            => inner.RecordPaymentReferenceAsync(orderId, provider, reference, now, ct);
+
+        public Task<IReadOnlyList<Order>> GetPossibleDuplicatesAsync(TimeSpan window, int limit, CancellationToken ct)
+            => inner.GetPossibleDuplicatesAsync(window, limit, ct);
+
+        public Task<bool> RecordRefundAsync(Guid orderId, decimal refundedTotal, bool fullyRefunded, DateTimeOffset now, CancellationToken ct)
+            => inner.RecordRefundAsync(orderId, refundedTotal, fullyRefunded, now, ct);
+
         public Task UpdateStatusAsync(Order order, DateTimeOffset now, CancellationToken ct)
             => inner.UpdateStatusAsync(order, now, ct);
 

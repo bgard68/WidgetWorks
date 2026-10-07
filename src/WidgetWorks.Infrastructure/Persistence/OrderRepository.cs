@@ -1,3 +1,4 @@
+using System.Data;
 using Dapper;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Orders;
@@ -7,7 +8,7 @@ namespace WidgetWorks.Infrastructure.Persistence;
 public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderRepository
 {
     private const string OrderColumns =
-        "id, order_number, user_id, email, ship_name, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country, subtotal, shipping_method, shipping, tax_state, tax_rate, tax, total, status, payment_provider, payment_reference, tracking_number, created_at, updated_at";
+        "id, order_number, user_id, email, ship_name, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country, subtotal, shipping_method, shipping, tax_state, tax_rate, tax, total, status, payment_provider, payment_reference, tracking_number, payment_unconfirmed_at, refunded_total, created_at, updated_at";
 
     private const string ItemColumns =
         "id, order_id, widget_id, sku, name, unit_price, quantity, line_subtotal";
@@ -92,11 +93,53 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         return affected == 1;
     }
 
+    public async Task<bool> MarkPaymentUnconfirmedAsync(Guid orderId, string provider, DateTimeOffset now, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+
+        // No payment_reference is written because there is none to write — the whole point is that we
+        // never learned the provider's id for this charge. Reconciliation fills it in once it finds out.
+        var affected = await db.ExecuteAsync(new CommandDefinition(
+            @"update orders set status = @Status, payment_provider = @Provider, payment_unconfirmed_at = @Now, updated_at = @Now
+              where id = @Id and status = @Expected",
+            new { Id = orderId, Status = OrderStatus.AwaitingPayment, Provider = provider, Now = now, Expected = OrderStatus.Pending },
+            cancellationToken: ct));
+        return affected == 1;
+    }
+
+    public async Task<bool> RecordPaymentReferenceAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        var affected = await db.ExecuteAsync(new CommandDefinition(
+            @"update orders set payment_provider = @Provider, payment_reference = @Reference,
+                     payment_unconfirmed_at = null, updated_at = @Now
+              where id = @Id and status = @Expected",
+            new { Id = orderId, Provider = provider, Reference = reference, Now = now, Expected = OrderStatus.AwaitingPayment },
+            cancellationToken: ct));
+        return affected == 1;
+    }
+
+    public async Task<IReadOnlyList<Order>> GetUnconfirmedPaymentsAsync(int limit, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        var orders = (await db.QueryAsync<Order>(new CommandDefinition(
+            $@"select {OrderColumns} from orders
+               where payment_unconfirmed_at is not null
+               order by payment_unconfirmed_at
+               limit @Limit",
+            new { Limit = limit },
+            cancellationToken: ct))).ToList();
+
+        await LoadItemsAsync(db, orders, ct);
+        return orders;
+    }
+
     public async Task<bool> MarkPaidAsync(Guid orderId, string provider, string reference, DateTimeOffset now, CancellationToken ct)
     {
         using var db = await factory.OpenAsync(ct);
         var affected = await db.ExecuteAsync(new CommandDefinition(
-            @"update orders set status = @Status, payment_provider = @Provider, payment_reference = @Reference, updated_at = @Now
+            @"update orders set status = @Status, payment_provider = @Provider, payment_reference = @Reference,
+                     payment_unconfirmed_at = null, updated_at = @Now
               where id = @Id and status = any(@Expected)",
             new { Id = orderId, Status = OrderStatus.Paid, Provider = provider, Reference = reference, Now = now, Expected = AwaitingSettlement },
             cancellationToken: ct));
@@ -115,7 +158,7 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
             // reservation. Without it a redelivered webhook decrements quantity_reserved a second
             // time and eats stock still held by a different order.
             var applied = await db.ExecuteAsync(new CommandDefinition(
-                @"update orders set status = @Status, updated_at = @Now
+                @"update orders set status = @Status, payment_unconfirmed_at = null, updated_at = @Now
                   where id = @Id and status = any(@Expected)",
                 new { Id = order.Id, Status = OrderStatus.PaymentFailed, Now = now, Expected = AwaitingSettlement },
                 tx, cancellationToken: ct));
@@ -163,7 +206,10 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
             string? sql = order.Status switch
             {
                 OrderStatus.Shipped => ShipSql,
-                OrderStatus.Cancelled => ReleaseSql,
+
+                // Both hand the hold back. A refund is only reachable from Paid — before anything
+                // ships — so the goods are still on the shelf and the units go back on sale.
+                OrderStatus.Cancelled or OrderStatus.Refunded => ReleaseSql,
                 _ => null,
             };
 
@@ -190,19 +236,110 @@ public sealed class OrderRepository(IDbConnectionFactory factory) : IOrderReposi
         using var db = await factory.OpenAsync(ct);
         var orders = (await db.QueryAsync<Order>(new CommandDefinition(
             $@"select {OrderColumns} from orders
-               where status = @Status and updated_at < @Cutoff
+               where status = @Status and updated_at < @Cutoff and payment_unconfirmed_at is null
                order by updated_at
                limit @Limit",
             new { Status = OrderStatus.AwaitingPayment, Cutoff = cutoff, Limit = limit },
             cancellationToken: ct))).ToList();
 
+        await LoadItemsAsync(db, orders, ct);
+        return orders;
+    }
+
+    /// <summary>
+    /// Fills in the line items for a batch of orders. Both sweeps need them — releasing a reservation
+    /// is per-item — and both ran the same loop, so it lives in one place.
+    /// </summary>
+    private async Task LoadItemsAsync(IDbConnection db, List<Order> orders, CancellationToken ct)
+    {
         foreach (var order in orders)
         {
             order.Items = (await db.QueryAsync<OrderItem>(new CommandDefinition(
                 $"select {ItemColumns} from order_items where order_id = @id order by name",
                 new { id = order.Id }, cancellationToken: ct))).ToList();
         }
+    }
 
+    public async Task<bool> RecordRefundAsync(Guid orderId, decimal refundedTotal, bool fullyRefunded, DateTimeOffset now, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+        using var tx = db.BeginTransaction();
+        try
+        {
+            // Guarded on Paid and on the running total, so two staff refunding at once cannot both
+            // apply their amount: the second sees a refunded_total that no longer matches what it read
+            // and is declined rather than overpaying.
+            var status = fullyRefunded ? OrderStatus.Refunded : OrderStatus.Paid;
+            var applied = await db.ExecuteAsync(new CommandDefinition(
+                @"update orders set refunded_total = @RefundedTotal, status = @Status, updated_at = @Now
+                  where id = @Id and status = @Expected and refunded_total < @RefundedTotal",
+                new { Id = orderId, RefundedTotal = refundedTotal, Status = status, Now = now, Expected = OrderStatus.Paid },
+                tx, cancellationToken: ct));
+
+            if (applied != 1)
+            {
+                tx.Rollback();
+                return false;
+            }
+
+            // Only a fully refunded order hands its stock back. A part refund leaves goods still owed,
+            // so the units stay committed to it.
+            if (fullyRefunded)
+            {
+                var items = (await db.QueryAsync<OrderItem>(new CommandDefinition(
+                    $"select {ItemColumns} from order_items where order_id = @id",
+                    new { id = orderId }, tx, cancellationToken: ct))).ToList();
+
+                foreach (var item in items)
+                {
+                    await db.ExecuteAsync(new CommandDefinition(
+                        ReleaseSql, new { item.WidgetId, item.Quantity, Now = now }, tx, cancellationToken: ct));
+                }
+            }
+
+            tx.Commit();
+            return true;
+        }
+        catch
+        {
+            tx.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<Order>> GetPossibleDuplicatesAsync(TimeSpan window, int limit, CancellationToken ct)
+    {
+        using var db = await factory.OpenAsync(ct);
+
+        // Self-join rather than a window function on purpose: "another order exists that matches on
+        // customer and total and sits within the window" is the definition, and EXISTS says exactly
+        // that. Failed and cancelled orders are excluded on both sides — a retry after a decline is
+        // the system working, not a duplicate.
+        //
+        // Deliberately a heuristic, and deliberately not acted on automatically. Two identical orders
+        // minutes apart are usually a mistake and occasionally a customer who meant it, and no query
+        // can tell those apart. It produces a list for a human, nothing more.
+        var orders = (await db.QueryAsync<Order>(new CommandDefinition(
+            $@"select {OrderColumns} from orders o
+               where o.status <> all(@Excluded)
+                 and exists (
+                   select 1 from orders d
+                   where d.id <> o.id
+                     and d.email = o.email
+                     and d.total = o.total
+                     and d.status <> all(@Excluded)
+                     and d.created_at between o.created_at - @Window::interval and o.created_at + @Window::interval)
+               order by o.email, o.created_at desc
+               limit @Limit",
+            new
+            {
+                Excluded = new[] { OrderStatus.PaymentFailed, OrderStatus.Cancelled },
+                Window = $"{window.TotalSeconds} seconds",
+                Limit = limit,
+            },
+            cancellationToken: ct))).ToList();
+
+        await LoadItemsAsync(db, orders, ct);
         return orders;
     }
 

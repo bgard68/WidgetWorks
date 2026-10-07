@@ -118,6 +118,13 @@ public sealed class ApiFixture : IAsyncLifetime
         await drop.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// The throwaway database behind this host. Exposed so a suite can count rows directly: when the
+    /// claim under test is "exactly one order exists", asking the database is the only answer that
+    /// cannot be fooled by the API agreeing with itself.
+    /// </summary>
+    public string ConnectionString => _connectionString;
+
     public HttpClient Client() => Factory.CreateClient();
 
     /// <summary>Signs in and returns a client that sends the bearer token on every request.</summary>

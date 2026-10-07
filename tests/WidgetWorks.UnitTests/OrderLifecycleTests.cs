@@ -53,7 +53,7 @@ public class OrderLifecycleTests
     public async Task Shipping_converts_the_reservation_into_a_stock_decrement()
     {
         var (orders, widgets, order, widgetId) = StockedSetup();
-        var handler = new UpdateOrderStatusHandler(orders, new FakeEmailSender(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+        var handler = new UpdateOrderStatusHandler(orders, new FakeEmailSender(), new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
 
         var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Shipped, "1Z999"), CancellationToken.None);
 
@@ -68,7 +68,7 @@ public class OrderLifecycleTests
     public async Task Cancelling_returns_the_reserved_stock_to_sale()
     {
         var (orders, widgets, order, widgetId) = StockedSetup();
-        var handler = new UpdateOrderStatusHandler(orders, new FakeEmailSender(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+        var handler = new UpdateOrderStatusHandler(orders, new FakeEmailSender(), new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
 
         var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Cancelled, null), CancellationToken.None);
 
@@ -82,7 +82,7 @@ public class OrderLifecycleTests
     public async Task Paid_to_shipped_sets_tracking_and_emails()
     {
         var (orders, email, order) = Setup();
-        var handler = new UpdateOrderStatusHandler(orders, email, Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+        var handler = new UpdateOrderStatusHandler(orders, email, new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
 
         var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Shipped, "1Z999"), CancellationToken.None);
 
@@ -96,7 +96,7 @@ public class OrderLifecycleTests
     public async Task Cannot_deliver_before_shipping()
     {
         var (orders, email, order) = Setup();
-        var handler = new UpdateOrderStatusHandler(orders, email, Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+        var handler = new UpdateOrderStatusHandler(orders, email, new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
 
         var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Delivered, null), CancellationToken.None);
 
@@ -107,7 +107,7 @@ public class OrderLifecycleTests
     public async Task Shipped_to_delivered_is_allowed()
     {
         var (orders, email, order) = Setup(OrderStatus.Shipped);
-        var handler = new UpdateOrderStatusHandler(orders, email, Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+        var handler = new UpdateOrderStatusHandler(orders, email, new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
 
         var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Delivered, null), CancellationToken.None);
 
@@ -119,7 +119,7 @@ public class OrderLifecycleTests
     public async Task Cancel_from_paid_is_allowed_and_emails()
     {
         var (orders, email, order) = Setup();
-        var handler = new UpdateOrderStatusHandler(orders, email, Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+        var handler = new UpdateOrderStatusHandler(orders, email, new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
 
         var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Cancelled, null), CancellationToken.None);
 
@@ -131,7 +131,7 @@ public class OrderLifecycleTests
     public async Task An_unknown_order_cannot_change_status()
     {
         var (orders, email, _) = Setup();
-        var handler = new UpdateOrderStatusHandler(orders, email, Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+        var handler = new UpdateOrderStatusHandler(orders, email, new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
 
         var result = await handler.Handle(new UpdateOrderStatusCommand(Guid.NewGuid(), OrderStatus.Shipped, null), CancellationToken.None);
 
@@ -144,7 +144,7 @@ public class OrderLifecycleTests
     public async Task A_failed_shipping_email_does_not_undo_the_transition()
     {
         var (orders, _, order) = Setup();
-        var handler = new UpdateOrderStatusHandler(orders, new ThrowingEmailSender(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
+        var handler = new UpdateOrderStatusHandler(orders, new ThrowingEmailSender(), new RecordingAuditLog(), Clock(), NullLogger<UpdateOrderStatusHandler>.Instance);
 
         var result = await handler.Handle(new UpdateOrderStatusCommand(order.Id, OrderStatus.Shipped, "1Z999"), CancellationToken.None);
 

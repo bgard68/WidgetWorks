@@ -20,6 +20,10 @@ public sealed record OrderView(
     string? PaymentReference,
     string? TrackingNumber,
     DateTimeOffset CreatedAt,
+    /// <summary>Set while the charge outcome is unknown — staff need to see this, not just the logs.</summary>
+    DateTimeOffset? PaymentUnconfirmedAt,
+    /// <summary>Cumulative amount refunded. Staff need the figure, not just the status.</summary>
+    decimal RefundedTotal,
     IReadOnlyList<OrderItemView> Items)
 {
     public static OrderView From(Order o) => new(
@@ -38,10 +42,20 @@ public sealed record OrderView(
         o.PaymentReference,
         o.TrackingNumber,
         o.CreatedAt,
+        o.PaymentUnconfirmedAt,
+        o.RefundedTotal,
         o.Items.Select(i => new OrderItemView(i.WidgetId, i.Sku, i.Name, i.UnitPrice, i.Quantity, i.LineSubtotal)).ToList());
 }
 
-public sealed record OrderSummary(Guid Id, string OrderNumber, string Status, decimal Total, int ItemCount, DateTimeOffset CreatedAt)
+public sealed record OrderSummary(
+    Guid Id,
+    string OrderNumber,
+    string Status,
+    decimal Total,
+    int ItemCount,
+    DateTimeOffset CreatedAt,
+    string? Email = null,
+    DateTimeOffset? PaymentUnconfirmedAt = null)
 {
-    public static OrderSummary From(Order o) => new(o.Id, o.OrderNumber, o.Status, o.Total, o.UnitCount, o.CreatedAt);
+    public static OrderSummary From(Order o) => new(o.Id, o.OrderNumber, o.Status, o.Total, o.UnitCount, o.CreatedAt, o.Email, o.PaymentUnconfirmedAt);
 }

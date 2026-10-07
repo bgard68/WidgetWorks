@@ -33,7 +33,7 @@ public class ConfirmPaymentTests
 
         var orders = new InMemoryOrderRepository(widgets);
         var email = new FakeEmailSender();
-        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), email, Clock(), NullLogger<CheckoutHandler>.Instance);
+        var handler = new CheckoutHandler(carts, widgets, orders, new OrderPricer(new FlatRateShippingCalculator(), new StateSalesTaxCalculator(new StaticStateTaxRateProvider())), new MockPaymentGateway(), email, new FakeReconciliationSignal(), Clock(), NullLogger<CheckoutHandler>.Instance);
 
         var result = await handler.Handle(
             new CheckoutCommand(cart.Id, null, "jane@example.com", Address(), "Standard", "klarna_demo"), CancellationToken.None);

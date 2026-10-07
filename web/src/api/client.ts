@@ -39,9 +39,16 @@ export function getRefreshToken(): string | null {
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /**
+   * Machine-readable reason, when the server sends one alongside the message. A status alone cannot
+   * say whether retrying could help — two 409s from checkout mean opposite things — and matching on
+   * the prose would break the first time someone reworded it.
+   */
+  code?: string
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
@@ -93,12 +100,18 @@ export interface RequestOptions {
   method?: string
   body?: unknown
   auth?: boolean
+  /**
+   * Extra headers for this one request. Today the only caller is checkout, which sends an
+   * Idempotency-Key so a retried POST returns the original order instead of placing a second.
+   */
+  headers?: Record<string, string>
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const init: RequestInit = {
     method: options.method ?? 'GET',
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    headers: options.headers,
   }
 
   let res = await raw(path, init)
@@ -110,13 +123,15 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   if (!res.ok) {
     let message = `Request failed (${res.status})`
+    let code: string | undefined
     try {
       const data = await res.json()
       if (data?.error) message = data.error
+      if (data?.code) code = data.code
     } catch {
       // no JSON body
     }
-    throw new ApiError(res.status, message)
+    throw new ApiError(res.status, message, code)
   }
 
   if (res.status === 204) return undefined as T

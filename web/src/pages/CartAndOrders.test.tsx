@@ -207,6 +207,9 @@ describe('OrdersPage', () => {
   })
 })
 
+/** The review list is loaded with the order list; empty is the healthy case these tests assert. */
+const noExceptions = { unconfirmed: [], possibleDuplicates: [] }
+
 describe('AdminOrderPage', () => {
   const summary = {
     id: 'o-1',
@@ -234,7 +237,9 @@ describe('AdminOrderPage', () => {
 
   it('lists recent orders so staff can find one without knowing its id', async () => {
     signIn('Manager')
-    stubFetch([['/admin/orders', () => [summary]]])
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders', () => [summary]]])
 
     renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
 
@@ -246,6 +251,8 @@ describe('AdminOrderPage', () => {
   it('opening an order shows its detail and fulfilment controls', async () => {
     signIn('Manager')
     stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      
       ['/admin/orders/o-1', () => detail],
       ['/admin/orders', () => [summary]],
     ])
@@ -261,6 +268,8 @@ describe('AdminOrderPage', () => {
   it('marking shipped posts the status with the tracking number typed in', async () => {
     signIn('Manager')
     const calls = stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      
       ['/admin/orders/o-1/status', () => ({ ...detail, status: 'Shipped', trackingNumber: '1Z-NEW' })],
       ['/admin/orders/o-1', () => detail],
       ['/admin/orders', () => [summary]],
@@ -281,6 +290,8 @@ describe('AdminOrderPage', () => {
   it('sends null rather than an empty string when no tracking was entered', async () => {
     signIn('Manager')
     const calls = stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      
       ['/admin/orders/o-1/status', () => ({ ...detail, status: 'Cancelled' })],
       ['/admin/orders/o-1', () => detail],
       ['/admin/orders', () => [summary]],
@@ -306,6 +317,9 @@ describe('AdminOrderPage', () => {
           status: 400, headers: { 'Content-Type': 'application/json' },
         })
       }
+      if (url.includes('/admin/orders/payment-exceptions')) {
+        return new Response(JSON.stringify(noExceptions), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
       if (url.includes('/admin/orders/o-1')) {
         return new Response(JSON.stringify(detail), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
@@ -322,7 +336,9 @@ describe('AdminOrderPage', () => {
 
   it('says there is nothing to fulfil when the list is empty', async () => {
     signIn('Manager')
-    stubFetch([['/admin/orders', () => []]])
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders', () => []]])
 
     renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
 
@@ -331,7 +347,9 @@ describe('AdminOrderPage', () => {
 
   it('refreshes the list on demand', async () => {
     signIn('Manager')
-    const calls = stubFetch([['/admin/orders', () => [summary]]])
+    const calls = stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders', () => [summary]]])
     const user = userEvent.setup()
 
     renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
@@ -345,7 +363,9 @@ describe('AdminOrderPage', () => {
 
   it('prompts staff to pick an order before showing controls', async () => {
     signIn('Manager')
-    stubFetch([['/admin/orders', () => [summary]]])
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders', () => [summary]]])
 
     renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
 
@@ -357,6 +377,11 @@ describe('AdminOrderPage', () => {
   it('reports an order it cannot open', async () => {
     signIn('Manager')
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      // The page also loads the review list; without this the generic fallback below would answer it
+      // with an order array and the component would blow up on a shape it never asked for.
+      if (String(input).includes('/admin/orders/payment-exceptions')) {
+        return new Response(JSON.stringify(noExceptions), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
       if (String(input).includes('/admin/orders/o-1')) {
         return new Response(JSON.stringify({ error: 'Order not found.' }), {
           status: 404, headers: { 'Content-Type': 'application/json' },
@@ -376,6 +401,8 @@ describe('AdminOrderPage', () => {
   it('shows a tracking number the order already carries', async () => {
     signIn('Manager')
     stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      
       ['/admin/orders/o-1', () => ({ ...detail, status: 'Shipped', trackingNumber: '1Z-EXISTING' })],
       ['/admin/orders', () => [summary]],
     ])
@@ -390,7 +417,9 @@ describe('AdminOrderPage', () => {
 
   it('counts a single order in the singular', async () => {
     signIn('Manager')
-    stubFetch([['/admin/orders', () => [summary]]])
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders', () => [summary]]])
 
     renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
 
@@ -412,6 +441,8 @@ describe('AdminOrderPage', () => {
   it('marks an order delivered', async () => {
     signIn('Manager')
     const calls = stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      
       ['/admin/orders/o-1/status', () => ({ ...detail, status: 'Delivered' })],
       ['/admin/orders/o-1', () => ({ ...detail, status: 'Shipped', trackingNumber: '1Z-EXISTING' })],
       ['/admin/orders', () => [summary]],
@@ -432,6 +463,11 @@ describe('AdminOrderPage', () => {
     signIn('Manager')
     let listed = false
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      // The page also loads the review list; without this the generic fallback below would answer it
+      // with an order array and the component would blow up on a shape it never asked for.
+      if (String(input).includes('/admin/orders/payment-exceptions')) {
+        return new Response(JSON.stringify(noExceptions), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
       if (String(input).includes('/admin/orders/o-1')) throw 'network exploded'
       listed = true
       return new Response(JSON.stringify([summary]), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -449,6 +485,11 @@ describe('AdminOrderPage', () => {
     signIn('Manager')
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
+      // The page also loads the review list; without this the generic fallback below would answer it
+      // with an order array and the component would blow up on a shape it never asked for.
+      if (String(input).includes('/admin/orders/payment-exceptions')) {
+        return new Response(JSON.stringify(noExceptions), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
       if (url.includes('/status')) throw 'network exploded'
       if (url.includes('/admin/orders/o-1')) {
         return new Response(JSON.stringify(detail), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -462,5 +503,241 @@ describe('AdminOrderPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Mark shipped' }))
 
     expect(await screen.findByText('Update failed.')).toBeInTheDocument()
+  })
+
+  it('puts an unconfirmed payment in front of staff rather than in a log', async () => {
+    signIn('Manager')
+    stubFetch([
+      ['/admin/orders/o-1', () => detail],
+      ['/admin/orders/payment-exceptions', () => ({
+        unconfirmed: [
+          {
+            id: 'o-1', orderNumber: 'WW-STUCK-1', status: 'AwaitingPayment', total: 41.5, itemCount: 1,
+            createdAt: '2026-05-01T10:00:00Z', email: 'jane@example.com', paymentUnconfirmedAt: '2026-05-01T10:00:00Z',
+          },
+          // A guest order carries no account email, and a row written before the marker existed has
+          // no timestamp — neither should break the row or print "undefined" at a customer.
+          {
+            id: 'o-2', orderNumber: 'WW-STUCK-2', status: 'AwaitingPayment', total: 12, itemCount: 1,
+            createdAt: '2026-05-01T10:00:00Z', email: null, paymentUnconfirmedAt: null,
+          },
+        ],
+        possibleDuplicates: [],
+      })],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+
+    // Named, priced and dated, so staff can judge it without opening anything.
+    expect(await screen.findByText(/2 order\(s\) with an unconfirmed payment/)).toBeInTheDocument()
+    expect(screen.getByText(/jane@example.com/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'WW-STUCK-2' })).toBeInTheDocument()
+
+    // And the order number opens it: a list you cannot act from is a list nobody uses.
+    await user.click(screen.getByRole('button', { name: 'WW-STUCK-1' }))
+    expect(await screen.findByText('jane@example.com')).toBeInTheDocument()
+  })
+
+  it('flags possible duplicates as a guess, not a verdict', async () => {
+    signIn('Manager')
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => ({
+        unconfirmed: [],
+        possibleDuplicates: [
+          { id: 'o-1', orderNumber: 'WW-DUP-1', status: 'Paid', total: 29.19, itemCount: 2, createdAt: '2026-05-01T10:00:00Z', email: 'jane@example.com', paymentUnconfirmedAt: null },
+          { id: 'o-2', orderNumber: 'WW-DUP-2', status: 'Paid', total: 29.19, itemCount: 2, createdAt: '2026-05-01T10:02:00Z', email: null, paymentUnconfirmedAt: null },
+        ],
+      })],
+      ['/admin/orders/o-1', () => detail],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+
+    expect(await screen.findByText(/2 order\(s\) look like duplicates/)).toBeInTheDocument()
+
+    // Both sides listed, because the decision is which one to refund.
+    expect(screen.getByRole('button', { name: 'WW-DUP-1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'WW-DUP-2' })).toBeInTheDocument()
+
+    // Opening one from the flag is how staff compare them.
+    await user.click(screen.getByRole('button', { name: 'WW-DUP-1' }))
+    expect(await screen.findByText('jane@example.com')).toBeInTheDocument()
+  })
+
+  it('shows nothing at all when the payment path is healthy', async () => {
+    signIn('Manager')
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders', () => [summary]],
+    ])
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await screen.findByText('WW-20260501-ABC123')
+
+    // An exception list that is always on screen is one staff learn to ignore.
+    expect(screen.queryByText(/unconfirmed payment/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/look like duplicates/)).not.toBeInTheDocument()
+  })
+
+  it('refunds a paid order and shows it refunded', async () => {
+    signIn('Manager')
+    const calls = stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders/o-1/refund', () => ({ ...detail, status: 'Refunded' })],
+      ['/admin/orders/o-1', () => detail],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+    await user.click(await screen.findByRole('button', { name: 'Refund order' }))
+
+    expect(await screen.findByText('Refunded')).toBeInTheDocument()
+    expect(calls.some((c) => c.url.includes('/refund') && c.init?.method === 'POST')).toBe(true)
+  })
+
+  it('hides the refund button once an order has shipped', async () => {
+    signIn('Manager')
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders/o-1', () => ({ ...detail, status: 'Shipped' })],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+    await screen.findByText('jane@example.com')
+
+    // Once goods are in transit the money is only half the question. The API refuses; the UI says so
+    // first rather than offering a button that cannot work.
+    expect(screen.queryByRole('button', { name: 'Refund order' })).not.toBeInTheDocument()
+  })
+
+  it('warns on the order itself when its charge was never confirmed', async () => {
+    signIn('Manager')
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders/o-1', () => ({ ...detail, status: 'AwaitingPayment', paymentUnconfirmedAt: '2026-05-01T10:00:00Z' })],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+
+    expect(await screen.findByText(/never confirmed this charge/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Refund order' })).not.toBeInTheDocument()
+  })
+
+  it('reports a refund the provider could not confirm without changing the order', async () => {
+    signIn('Manager')
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders/o-1', () => detail],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/refund')) {
+        return new Response(JSON.stringify({ error: 'The refund could not be confirmed. Check the provider before retrying.' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/admin/orders/payment-exceptions')) {
+        return new Response(JSON.stringify(noExceptions), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify(detail), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    await user.click(await screen.findByRole('button', { name: 'Refund order' }))
+
+    // Told to check the provider, not to try again: a second attempt could pay out twice.
+    expect(await screen.findByText(/could not be confirmed/)).toBeInTheDocument()
+
+    // And the order is untouched — marking it refunded over a refund that may not exist would strand
+    // the customer's money.
+    expect(screen.queryByText('Refunded')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Paid').length).toBeGreaterThan(0)
+  })
+
+  it('falls back to its own message when a refund fails with a non-Error', async () => {
+    signIn('Manager')
+    stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders/o-1', () => detail],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/refund')) throw 'network exploded'
+      return new Response(JSON.stringify(detail), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    await user.click(await screen.findByRole('button', { name: 'Refund order' }))
+
+    expect(await screen.findByText('Refund failed.')).toBeInTheDocument()
+  })
+
+  it('refunds part of an order and keeps it paid', async () => {
+    signIn('Manager')
+    const calls = stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders/o-1/refund', () => ({ ...detail, refundedTotal: 5 })],
+      ['/admin/orders/o-1', () => detail],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+
+    await user.type(screen.getByLabelText('Refund amount'), '5')
+    await user.click(screen.getByRole('button', { name: 'Refund order' }))
+
+    // The typed figure is what gets sent, and the order stays Paid with the amount shown back.
+    const posted = calls.find((c) => c.url.includes('/refund'))
+    expect(JSON.parse(String(posted?.init?.body))).toEqual({ amount: 5 })
+    expect(await screen.findByText('$5.00')).toBeInTheDocument()
+  })
+
+  it('an empty amount refunds the whole remaining balance', async () => {
+    signIn('Manager')
+    const calls = stubFetch([
+      ['/admin/orders/payment-exceptions', () => noExceptions],
+      ['/admin/orders/o-1/refund', () => ({ ...detail, status: 'Refunded', refundedTotal: detail.total })],
+      ['/admin/orders/o-1', () => detail],
+      ['/admin/orders', () => [summary]],
+    ])
+    const user = userEvent.setup()
+
+    renderWithProviders(<AdminOrderPage />, { at: '/admin/orders' })
+    await user.click(await screen.findByRole('button', { name: 'Open' }))
+
+    // The placeholder says what blank means, so nobody has to guess.
+    expect(screen.getByLabelText('Refund amount')).toHaveAttribute('placeholder', expect.stringContaining('full'))
+
+    await user.click(screen.getByRole('button', { name: 'Refund order' }))
+
+    const posted = calls.find((c) => c.url.includes('/refund'))
+    expect(JSON.parse(String(posted?.init?.body))).toEqual({ amount: null })
+
+    // Fully refunded, so there is nothing left to refund and the control goes away.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Refund order' })).not.toBeInTheDocument())
+    expect(screen.getAllByText('Refunded').length).toBeGreaterThan(0)
   })
 })

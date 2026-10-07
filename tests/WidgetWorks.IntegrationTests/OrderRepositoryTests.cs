@@ -484,4 +484,218 @@ public class OrderRepositoryTests(PostgresFixture db)
             return connection;
         }
     }
+
+    [Fact]
+    public async Task An_unconfirmed_charge_is_hidden_from_the_expiry_sweep_until_it_is_resolved()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, quantity: 2);
+        Assert.True(await Orders.TryPlaceAsync(order, CancellationToken.None));
+
+        // The provider never said what became of the charge.
+        Assert.True(await Orders.MarkPaymentUnconfirmedAsync(order.Id, "Stripe", Now, CancellationToken.None));
+
+        var stored = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
+        Assert.Equal(OrderStatus.AwaitingPayment, stored!.Status);
+        Assert.NotNull(stored.PaymentUnconfirmedAt);
+        Assert.Null(stored.PaymentReference);   // there was none to record
+
+        // The sweep that releases abandoned reservations must not see it. This is the assertion the
+        // whole design rests on: failing this order on a timer would release the stock of a charge
+        // that may well have been taken.
+        var stale = await Orders.GetStaleAwaitingPaymentAsync(Now.AddDays(1), 100, CancellationToken.None);
+        Assert.DoesNotContain(stale, o => o.Id == order.Id);
+
+        // Reconciliation does see it, with items loaded so a confirmed refusal can release stock.
+        var unconfirmed = await Orders.GetUnconfirmedPaymentsAsync(100, CancellationToken.None);
+        var found = Assert.Single(unconfirmed, o => o.Id == order.Id);
+        Assert.NotEmpty(found.Items);
+
+        // Recording the reference discovered by a probe hands the order back to the ordinary paths:
+        // the webhook can correlate on it, and the sweep can see it again.
+        Assert.True(await Orders.RecordPaymentReferenceAsync(order.Id, "Stripe", "pi_probed", Now, CancellationToken.None));
+
+        var handedBack = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
+        Assert.Equal("pi_probed", handedBack!.PaymentReference);
+        Assert.Null(handedBack.PaymentUnconfirmedAt);
+        Assert.Contains(
+            await Orders.GetStaleAwaitingPaymentAsync(Now.AddDays(1), 100, CancellationToken.None),
+            o => o.Id == order.Id);
+    }
+
+    [Fact]
+    public async Task Settling_an_unconfirmed_order_clears_the_mark_that_exempted_it()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, quantity: 2);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+        await Orders.MarkPaymentUnconfirmedAsync(order.Id, "Stripe", Now, CancellationToken.None);
+
+        // The reconciled truth: it had been paid all along.
+        Assert.True(await Orders.MarkPaidAsync(order.Id, "Stripe", "pi_reconciled", Now, CancellationToken.None));
+
+        var paid = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
+        Assert.Equal(OrderStatus.Paid, paid!.Status);
+        Assert.Equal("pi_reconciled", paid.PaymentReference);
+
+        // Cleared, so the next reconciliation pass does not pick up an order that is already decided.
+        Assert.Null(paid.PaymentUnconfirmedAt);
+        Assert.DoesNotContain(
+            await Orders.GetUnconfirmedPaymentsAsync(100, CancellationToken.None),
+            o => o.Id == order.Id);
+    }
+
+    [Fact]
+    public async Task An_order_that_has_moved_on_cannot_be_marked_unconfirmed()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, quantity: 2);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+        await Orders.MarkPaidAsync(order.Id, "Stripe", "pi_settled", Now, CancellationToken.None);
+
+        // Compare-and-set, as everywhere else on this path: a late writer cannot drag a decided order
+        // back into "we don't know".
+        Assert.False(await Orders.MarkPaymentUnconfirmedAsync(order.Id, "Stripe", Now, CancellationToken.None));
+        Assert.Equal(OrderStatus.Paid, (await Orders.GetByIdAsync(order.Id, CancellationToken.None))!.Status);
+    }
+
+    /// <summary>An order for the given customer and total, created at a given moment.</summary>
+    private async Task<Order> GivenOrderAt(Widget widget, string email, decimal total, DateTimeOffset at, string status = OrderStatus.Paid)
+    {
+        var order = OrderFor(widget, quantity: 1);
+        order.Email = email;
+        order.Total = total;
+        order.CreatedAt = at;
+        order.UpdatedAt = at;
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+
+        if (status == OrderStatus.Paid)
+        {
+            await Orders.MarkPaidAsync(order.Id, "Mock", "pi_" + Guid.NewGuid().ToString("N")[..8], at, CancellationToken.None);
+        }
+        else if (status == OrderStatus.PaymentFailed)
+        {
+            await Orders.MarkPaymentFailedAsync(order, "declined", at, CancellationToken.None);
+        }
+
+        return order;
+    }
+
+    [Fact]
+    public async Task Possible_duplicates_pair_only_live_orders_close_together_for_the_same_customer_and_total()
+    {
+        var widget = await GivenWidget(onHand: 200);
+        var email = $"dup-{Guid.NewGuid():N}@example.com";
+
+        var first = await GivenOrderAt(widget, email, 50m, Now);
+        var second = await GivenOrderAt(widget, email, 50m, Now.AddMinutes(2));
+
+        // Same customer and total but hours later: a customer, not a mistake.
+        var muchLater = await GivenOrderAt(widget, email, 50m, Now.AddHours(5));
+
+        // Same window, different total.
+        var differentTotal = await GivenOrderAt(widget, email, 75m, Now.AddMinutes(1));
+
+        // Same window and total, different customer.
+        var otherCustomer = await GivenOrderAt(widget, $"other-{Guid.NewGuid():N}@example.com", 50m, Now.AddMinutes(1));
+
+        // A retry after a decline — the system working, and nobody charged twice.
+        var declined = await GivenOrderAt(widget, email, 90m, Now, status: OrderStatus.PaymentFailed);
+        var retried = await GivenOrderAt(widget, email, 90m, Now.AddMinutes(1));
+
+        var flagged = await Orders.GetPossibleDuplicatesAsync(TimeSpan.FromMinutes(10), 100, CancellationToken.None);
+        var ids = flagged.Select(o => o.Id).ToList();
+
+        // Both halves of the real pair, because staff compare them to decide which one to refund.
+        Assert.Contains(first.Id, ids);
+        Assert.Contains(second.Id, ids);
+
+        Assert.DoesNotContain(muchLater.Id, ids);
+        Assert.DoesNotContain(differentTotal.Id, ids);
+        Assert.DoesNotContain(otherCustomer.Id, ids);
+        Assert.DoesNotContain(declined.Id, ids);
+        Assert.DoesNotContain(retried.Id, ids);
+
+        // Items are loaded, so the list can show what was ordered without a second round trip.
+        Assert.NotEmpty(flagged.First(o => o.Id == first.Id).Items);
+    }
+
+    [Fact]
+    public async Task A_refund_hands_the_reservation_back_because_nothing_had_shipped()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, quantity: 3);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+        await Orders.MarkPaidAsync(order.Id, "Mock", "pi_refundable", Now, CancellationToken.None);
+
+        order.Status = OrderStatus.Refunded;
+        await Orders.UpdateStatusAsync(order, Now, CancellationToken.None);
+
+        var after = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+
+        // Reserved falls, on-hand does not: the goods never left the shelf, so they go back on sale.
+        Assert.Equal(0, after!.QuantityReserved);
+        Assert.Equal(10, after.QuantityOnHand);
+        Assert.Equal(OrderStatus.Refunded, (await Orders.GetByIdAsync(order.Id, CancellationToken.None))!.Status);
+    }
+
+    [Fact]
+    public async Task A_full_refund_releases_the_stock_and_a_partial_one_does_not()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, quantity: 3);
+        order.Total = 100m;
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+        await Orders.MarkPaidAsync(order.Id, "Mock", "pi_refundable", Now, CancellationToken.None);
+
+        // Part of it: the customer is still owed goods, so the units stay committed.
+        Assert.True(await Orders.RecordRefundAsync(order.Id, 40m, fullyRefunded: false, Now, CancellationToken.None));
+
+        var partial = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
+        Assert.Equal(40m, partial!.RefundedTotal);
+        Assert.Equal(OrderStatus.Paid, partial.Status);
+        Assert.Equal(3, (await Widgets.GetByIdAsync(widget.Id, CancellationToken.None))!.QuantityReserved);
+
+        // The rest: nothing is owed now, so the goods go back on sale.
+        Assert.True(await Orders.RecordRefundAsync(order.Id, 100m, fullyRefunded: true, Now, CancellationToken.None));
+
+        var full = await Orders.GetByIdAsync(order.Id, CancellationToken.None);
+        Assert.Equal(OrderStatus.Refunded, full!.Status);
+        Assert.Equal(100m, full.RefundedTotal);
+
+        var after = await Widgets.GetByIdAsync(widget.Id, CancellationToken.None);
+        Assert.Equal(0, after!.QuantityReserved);
+        Assert.Equal(10, after.QuantityOnHand);   // nothing shipped, so on-hand is untouched
+    }
+
+    [Fact]
+    public async Task Two_refunds_racing_cannot_both_apply_their_amount()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, quantity: 1);
+        order.Total = 100m;
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+        await Orders.MarkPaidAsync(order.Id, "Mock", "pi_raced", Now, CancellationToken.None);
+
+        // Both read a refunded_total of zero and both try to write 60. Overpaying by 20 is what the
+        // guard exists to stop, and only a real server deciding between two connections can prove it.
+        var results = await Task.WhenAll(
+            Task.Run(() => Orders.RecordRefundAsync(order.Id, 60m, false, Now, CancellationToken.None)),
+            Task.Run(() => Orders.RecordRefundAsync(order.Id, 60m, false, Now, CancellationToken.None)));
+
+        Assert.Equal(1, results.Count(applied => applied));
+        Assert.Equal(60m, (await Orders.GetByIdAsync(order.Id, CancellationToken.None))!.RefundedTotal);
+    }
+
+    [Fact]
+    public async Task An_order_that_is_no_longer_paid_cannot_be_refunded()
+    {
+        var widget = await GivenWidget(onHand: 10);
+        var order = OrderFor(widget, quantity: 1);
+        await Orders.TryPlaceAsync(order, CancellationToken.None);
+
+        // Still Pending: nothing has been charged, so there is nothing to give back.
+        Assert.False(await Orders.RecordRefundAsync(order.Id, 10m, false, Now, CancellationToken.None));
+        Assert.Equal(0m, (await Orders.GetByIdAsync(order.Id, CancellationToken.None))!.RefundedTotal);
+    }
 }

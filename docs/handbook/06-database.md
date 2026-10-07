@@ -72,6 +72,9 @@ journal table so each runs once. Files live in
 | 0010 | PasswordResetTokens | `password_reset_tokens` |
 | 0011 | WidgetArchive | `widgets.archived_at` (+ partial index on the live set) |
 | 0012 | RealignDemoCatalog | data only — realigns seeded demo widgets' names, descriptions and prices |
+| 0013 | IdempotencyKeys | `idempotency_keys` (composite PK `(scope, key)`, index on `created_at`) |
+| 0014 | PaymentReconciliation | `orders.payment_unconfirmed_at` (+ partial index on the unresolved set) |
+| 0015 | RefundTotals | `orders.refunded_total` (+ check constraint keeping it within the order) |
 
 ## Schema overview
 
@@ -99,7 +102,8 @@ erDiagram
 - **two_factor_secrets** — `user_id`, `secret`, `is_confirmed`. **recovery_codes** —
   `id`, `user_id`, `code_hash`, `used_at` (single-use).
 - **audit_events** — `id`, `user_id`, `action`, `detail`, `created_at` (login, lockout,
-  2FA, password reset, etc.).
+  2FA, password reset, refunds, order status changes, reconciliation outcomes). A null `user_id`
+  marks a system action, such as reconciliation settling a charge nobody pressed a button for.
 - **widgets** — `id`, `sku` (unique, upper), `name`, `description`, `image_url`, `price`
   `numeric(12,2)`, `is_active`, `quantity_on_hand`, `quantity_reserved`, `archived_at`,
   timestamps. Available = on_hand − reserved; `ck_widgets_reserved_range` keeps
@@ -113,7 +117,23 @@ erDiagram
 - **orders** — `id`, `order_number` (unique), `user_id` (nullable = guest), `email`,
   `ship_*` address, `subtotal`, `shipping_method`, `shipping`, `tax_state`, `tax_rate`,
   `tax`, `total`, `status`, `payment_provider`, `payment_reference`, `tracking_number`,
-  timestamps. **order_items** snapshot `sku`, `name`, `unit_price`, `quantity`,
+  `payment_unconfirmed_at`, timestamps. `status` includes **Refunded**, reached only through the
+  refund use case. `refunded_total` is cumulative and constrained to `0 <= refunded_total <= total`,
+  because the compare-and-set that stops two staff refunding at once relies on comparing against it. `payment_unconfirmed_at` marks an order whose charge outcome
+  the provider never gave: it holds its stock reservation and is **excluded from the stale-reservation
+  sweep**, because failing a charge that may have succeeded is worse than holding the stock. Settling
+  the order — by webhook or by reconciliation — clears it. See
+  [Payments](05-payments.md#reconciliation). **order_items** snapshot `sku`, `name`, `unit_price`, `quantity`,
   `line_subtotal` so history is stable even if a widget later changes.
 - **password_reset_tokens** — `id`, `user_id`, `token_hash` (SHA-256), `expires_at`,
   `used_at` (single-use, 30-minute).
+- **idempotency_keys** — `scope`, `key` (composite **primary key**), `request_hash`,
+  `status`, `response_body`, `response_error`, `created_at`, `completed_at`. The retry ledger
+  behind `POST /checkout`. Deliberately **not** related to `orders` or `carts`: a row is written
+  before the order exists, and must outlive the cart that checkout deletes on success, so a
+  retry arriving afterwards can still be answered. The primary key *is* the concurrency
+  control — a claim is one `insert … on conflict do nothing`, so simultaneous arrivals get
+  exactly one winner without a lock. `request_hash` is a SHA-256 of the command, not a copy
+  of it: the ledger has no business holding a second copy of anyone's address. Rows are
+  deleted after `Idempotency:RetentionHours` by the background sweep, which is what the
+  `created_at` index is for. See [Payments](05-payments.md#retry-safety-on-checkout).

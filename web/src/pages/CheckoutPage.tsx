@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api } from '../api/client'
+import { ApiError, api } from '../api/client'
 import type { CheckoutResult, OrderQuote } from '../api/types'
 import { useCart } from '../cart/CartContext'
 import { money } from '../lib/format'
@@ -27,6 +27,19 @@ const PAY_METHODS: PayMethod[] = [
 
 const FORM_ID = 'checkout-form'
 
+/**
+ * The server answers 409 `checkout_in_flight` when an earlier copy of this exact request is still
+ * being processed — two tabs, a proxy that retried, a click that beat the disabled button. The order
+ * is being placed; the only sensible thing a client can do is wait and ask again under the same key,
+ * which either replays the order or finds it still running.
+ *
+ * Bounded on purpose, and short: these waits happen while a shopper is watching a spinner. Four
+ * attempts over ~1.5s covers a checkout slowed by a sleepy database, and anything longer is better
+ * spent telling them than hiding from them. Permanent conflicts (a key reused for different
+ * content) are never retried — no amount of waiting changes those.
+ */
+const IN_FLIGHT_RETRY_DELAYS_MS = [150, 400, 1000]
+
 export function CheckoutPage() {
   const { cart, clearLocal } = useCart()
   const navigate = useNavigate()
@@ -40,6 +53,15 @@ export function CheckoutPage() {
   const [busy, setBusy] = useState(false)
 
   const cartId = cart?.id
+
+  // One key per checkout attempt, so the server can tell a retry from a second order.
+  //
+  // A ref rather than state on purpose: it must survive re-renders without causing one, and a
+  // second click that slips past the busy flag has to reuse the same value — minting a fresh key
+  // there would hand the server a brand-new request and place the duplicate order this is meant to
+  // prevent. Cleared only when the server refuses the attempt on its merits (see placeOrder), which
+  // is the one case where the next click really is a different request.
+  const idempotencyKey = useRef<string | null>(null)
 
   useEffect(() => {
     if (!cartId) return
@@ -72,8 +94,12 @@ export function CheckoutPage() {
     setBusy(true)
     setError(null)
     try {
-      const result = await api<CheckoutResult>('/checkout', {
+      idempotencyKey.current ??= crypto.randomUUID()
+      const key = idempotencyKey.current
+
+      const submit = () => api<CheckoutResult>('/checkout', {
         method: 'POST',
+        headers: { 'Idempotency-Key': key },
         body: {
           cartId,
           email: form.email,
@@ -88,9 +114,36 @@ export function CheckoutPage() {
           paymentToken,
         },
       })
+
+      let result: CheckoutResult
+      for (let attempt = 0; ; attempt++) {
+        try {
+          result = await submit()
+          break
+        } catch (err) {
+          const waitAndRetry = err instanceof ApiError
+            && err.status === 409
+            && err.code === 'checkout_in_flight'
+            && attempt < IN_FLIGHT_RETRY_DELAYS_MS.length
+          if (!waitAndRetry) throw err
+          await new Promise((resolve) => setTimeout(resolve, IN_FLIGHT_RETRY_DELAYS_MS[attempt]))
+        }
+      }
+
       clearLocal()
       navigate('/order-confirmation', { state: { ...result, email: form.email } })
     } catch (err) {
+      // A 400 is the server refusing this attempt — a declined card, an address it would not take.
+      // Whatever the shopper changes next is genuinely a different request, so the key is retired;
+      // keeping it would answer the corrected attempt with the original refusal.
+      //
+      // Everything else (a dropped connection, a timeout, a 5xx) leaves the outcome unknown, and
+      // the key is exactly what makes trying again safe: it either replays the order that was
+      // placed or is told the first attempt is still running.
+      if (err instanceof ApiError && err.status === 400) {
+        idempotencyKey.current = null
+      }
+
       setError(err instanceof Error ? err.message : 'Checkout failed.')
     } finally {
       setBusy(false)

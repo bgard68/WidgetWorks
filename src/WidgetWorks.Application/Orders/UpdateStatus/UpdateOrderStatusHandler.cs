@@ -6,7 +6,9 @@ using WidgetWorks.Domain.Orders;
 
 namespace WidgetWorks.Application.Orders.UpdateStatus;
 
-public sealed record UpdateOrderStatusCommand(Guid OrderId, string Status, string? TrackingNumber);
+/// <summary><paramref name="ActorId"/> is the staff member making the change — recorded, because
+/// "who moved this order" is the first question asked when one moves wrongly.</summary>
+public sealed record UpdateOrderStatusCommand(Guid OrderId, string Status, string? TrackingNumber, Guid? ActorId = null);
 
 /// <summary>
 /// Drives fulfilment. The legal transitions belong to the order itself (see
@@ -16,6 +18,7 @@ public sealed record UpdateOrderStatusCommand(Guid OrderId, string Status, strin
 public sealed class UpdateOrderStatusHandler(
     IOrderRepository orders,
     IEmailSender email,
+    IAuditLog audit,
     TimeProvider clock,
     ILogger<UpdateOrderStatusHandler> logger)
 {
@@ -35,8 +38,18 @@ public sealed class UpdateOrderStatusHandler(
         }
 
         var now = clock.GetUtcNow();
+        var from = order.Status;
         order.TransitionTo(target, command.TrackingNumber, now);
         await orders.UpdateStatusAsync(order, now, ct);
+
+        // Written after the change lands, so the trail never claims something that did not happen. The
+        // status values are domain constants rather than the caller's string, which keeps a request
+        // body carrying newlines from forging entries.
+        await audit.WriteAsync(
+            command.ActorId,
+            "order.status_changed",
+            $"{order.OrderNumber}: {from} -> {order.Status}",
+            ct);
 
         try
         {

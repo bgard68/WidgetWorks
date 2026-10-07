@@ -198,7 +198,6 @@ erDiagram
     numeric total
     text payment_ref
     text card_last4
-    text idempotency_key
     timestamptz created_at
   }
 ```
@@ -207,7 +206,7 @@ Notes:
 - `security_stamp` is the linchpin of §6.3 (global invalidation).
 - `refresh_tokens` stores a **hash** of the token, plus `family_id`/`replaced_by` for **rotation + reuse detection**.
 - `inventory` splits `quantity_on_hand` and `quantity_reserved`; `available = on_hand − reserved`. `version` (or `SELECT ... FOR UPDATE`) enforces no‑oversell concurrency (§8).
-- `orders.idempotency_key` is unique → duplicate checkout submits collapse to one order (§8).
+- Checkout idempotency lives in its own `idempotency_keys` table keyed on `(scope, key)`, **not** a column on `orders` → duplicate checkout submits collapse to one order (§8).
 - `users.google_sub` links a Google identity to the local account (nullable, unique).
 - Card data: **only** `card_last4` and a mock `payment_ref`. Never the PAN.
 
@@ -280,11 +279,15 @@ Google login is an *additional* front door, not a replacement: local email/passw
 
 ## 8. Checkout: concurrency, atomicity & idempotency
 
-The trickiest correctness area; three guarantees:
+The trickiest correctness area; five guarantees:
 
 1. **No overselling.** Stock decrement happens inside a DB transaction using optimistic concurrency (`inventory.version`) or pessimistic `SELECT ... FOR UPDATE`. If requested quantity exceeds available at commit time, the transaction fails and no order is created.
 2. **Atomic order creation.** Reserve stock → create order → clear cart in **one** transaction (`IUnitOfWork` wrapping a Dapper `IDbTransaction`). Only an **approved** payment commits.
-3. **Idempotency.** The client sends an `Idempotency-Key` header (a GUID per checkout attempt), stored on the order with a unique constraint; a duplicate submit returns the **original** order instead of charging/creating twice.
+3. **Idempotency.** The client sends an `Idempotency-Key` header (a GUID per checkout attempt) and a duplicate submit returns the **original** order instead of charging/creating twice.
+
+   As built this is a separate `idempotency_keys` ledger rather than the unique column on `orders` first sketched here, for two reasons the column could not cover. The key must be claimed **before** the order exists, or a crash between creating the order and recording the key leaves a paid order no retry can recognise; and the ledger stores the **response**, so a client whose connection dropped can recover its order number — a unique column can only reject the duplicate, never answer it. The claim itself is one `insert ... on conflict do nothing` on the primary key, which is the atomic check-and-create; concurrent arrivals that lose it get `409` while the first is in flight, and a replay of the stored response once it finishes. See [Payments](../handbook/05-payments.md#retry-safety-on-checkout).
+4. **Idempotency at the provider too.** The ledger above protects the *order*; it is blind to a retry of the outbound call, so the Stripe PaymentIntent create carries its own `Idempotency-Key` (the order number). That is what makes the adapter's bounded retry of an unanswered charge safe, rather than a second charge.
+5. **"We don't know" is not "no".** A charge the provider never resolves is `Indeterminate`, not declined: the order parks in AwaitingPayment holding its reservation, exempt from the stale-reservation sweep, and reconciliation later settles it from the provider's own record — a search, never a replayed create, because the order being probed may never have been charged. Nothing moves on anything but a definite answer. See [Payments](../handbook/05-payments.md#reconciliation).
 
 ---
 
@@ -375,6 +378,7 @@ Recommended default: a **composite** of small strategies so the calculation is v
 | ADR‑012 | **React + TS SPA** | ✅ Accepted | Best JWT demo |
 | ADR‑013 | **DbUp** SQL migrations | ✅ Accepted | No‑EF, versioned, reviewable |
 | ADR‑014 | **Idempotency‑Key + atomic stock** on checkout | ✅ Accepted | No double charge / oversell |
+| ADR‑015 | **Provider-level idempotency + reconciliation** for unconfirmed charges | ✅ Accepted | An unknown outcome is never treated as a refusal |
 | ADR‑015 | **Google sign‑in (OIDC)** → our own JWTs | ✅ Accepted | Social login without ceding our session model |
 | ADR‑016 | **Onion/Clean Architecture**, matching `ToDoApp` | ✅ Accepted | Consistency with your existing repo |
 | ADR‑017 | **Inventory split** on_hand + reserved → available | ✅ Accepted | Reserve‑at‑checkout prevents oversell |

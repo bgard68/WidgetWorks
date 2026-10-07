@@ -52,6 +52,34 @@ public sealed class MockPaymentGateway : IPaymentGateway
         return Task.FromResult(PaymentResult.Ok(Name, reference));
     }
 
+    /// <summary>
+    /// The mock has no ledger to search, and nothing it does can produce an indeterminate charge in
+    /// the first place — it never times out and never returns a 5xx. Answering "still unknown" is
+    /// therefore both honest and safe: reconciliation leaves the order exactly as it found it rather
+    /// than inventing an outcome from a gateway that cannot have one.
+    /// </summary>
+    public Task<PaymentResult> ProbeAsync(string orderNumber, CancellationToken ct)
+        => Task.FromResult(PaymentResult.Indeterminate(Name, "The mock gateway keeps no charge history to probe."));
+
+    /// <summary>
+    /// Approves any refund of a positive amount against a known reference, so the demo can exercise
+    /// the whole refund path without a provider account.
+    /// </summary>
+    public Task<PaymentResult> RefundAsync(string reference, decimal amount, string idempotencyKey, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return Task.FromResult(PaymentResult.Declined(Name, "The order has no payment reference to refund."));
+        }
+
+        if (amount <= 0)
+        {
+            return Task.FromResult(PaymentResult.Declined(Name, "Refund amount must be positive."));
+        }
+
+        return Task.FromResult(PaymentResult.Ok(Name, "mock_re_" + Guid.NewGuid().ToString("N")));
+    }
+
     private static bool IsAsyncToken(string token)
     {
         foreach (var marker in AsyncTokenMarkers)

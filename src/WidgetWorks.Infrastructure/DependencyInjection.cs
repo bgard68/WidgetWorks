@@ -6,6 +6,7 @@ using WidgetWorks.Application;
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Auth;
 using WidgetWorks.Infrastructure.Email;
+using WidgetWorks.Infrastructure.Hosting;
 using WidgetWorks.Infrastructure.Payments;
 using WidgetWorks.Infrastructure.Persistence;
 using WidgetWorks.Infrastructure.Pricing;
@@ -53,6 +54,11 @@ public static class DependencyInjection
         services.AddScoped<IWidgetRepository, WidgetRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<IIdempotencyStore, IdempotencyStore>();
+
+        // Singleton: it is a doorbell between a request and a background worker, so both sides have to
+        // be holding the same one.
+        services.AddSingleton<IReconciliationSignal, ReconciliationSignal>();
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddSingleton<ITotpService, TotpService>();
         services.AddSingleton<IRecoveryCodes, RecoveryCodeService>();

@@ -101,6 +101,10 @@ export interface OrderView {
   paymentReference: string | null
   trackingNumber: string | null
   createdAt: string
+  /** Set while the charge outcome is unknown: the order holds stock and awaits reconciliation. */
+  paymentUnconfirmedAt: string | null
+  /** Cumulative amount refunded. A part-refunded order is still Paid, with goods owed. */
+  refundedTotal: number
   items: OrderItemView[]
 }
 
@@ -111,4 +115,14 @@ export interface OrderSummary {
   total: number
   itemCount: number
   createdAt: string
+  email: string | null
+  paymentUnconfirmedAt: string | null
+}
+
+/** Everything on the payment path that needs a person. Empty on a healthy day. */
+export interface PaymentExceptions {
+  /** Charges the provider never confirmed. These orders hold stock while nobody knows. */
+  unconfirmed: OrderSummary[]
+  /** Orders that look like the same purchase twice: a heuristic, for a human to judge. */
+  possibleDuplicates: OrderSummary[]
 }

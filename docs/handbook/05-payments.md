@@ -199,6 +199,282 @@ Key properties:
 - **Settlement is idempotent.** Providers retry webhooks, so a duplicate delivery — or an
   event for an order that already moved on — is a no-op that returns the current status.
 
+## Retry safety on checkout
+
+Settlement being idempotent only covers the second half of the story. `POST /checkout` is
+reached by a browser form, and that request gets duplicated for ordinary reasons: a
+double-click, a proxy retry, a client retry policy, a shopper who reloaded because the
+spinner looked stuck. Each arrival used to mint a fresh order id and a fresh order number,
+so nothing in the schema could catch the second one — two orders, two charges.
+
+Clients opt in with a header:
+
+```
+POST /checkout
+Idempotency-Key: 7f1c9b2e-5f2a-4d3b-8a21-9c0e4b6d8f10
+```
+
+The key is **claimed before any work starts**, in a `idempotency_keys` table whose primary
+key is `(scope, key)`. The claim is a single `insert ... on conflict do nothing`, so two
+simultaneous arrivals both run it and the database picks exactly one winner — the atomic
+check-and-create that a read-then-write would get wrong. Only the winner reaches the
+payment gateway.
+
+| Second arrival finds | Answer | `code` |
+|---|---|---|
+| The first attempt still running | **409** — retry shortly | `checkout_in_flight` |
+| The first attempt finished | **200** with the original response and `Idempotent-Replay: true` | — |
+| The key used for a *different* body | **409** — the key is already spoken for | `idempotency_key_reused` |
+| A stored response that cannot be read back | **409** — look the order up | `idempotency_replay_failed` |
+| No key sent at all | Handled as before: no protection, no behaviour change | — |
+
+A 409 carries a `code` next to the message because the two kinds mean opposite things: one says
+*wait*, the other says *this will never work*. A status alone cannot tell them apart, and matching
+on the prose breaks the first time someone rewords it. Only `checkout_in_flight` is worth retrying;
+the SPA waits out up to four attempts over ~1.5s under the same key, and surfaces anything else at
+once.
+
+Two details that matter more than they look:
+
+- **The stored response is the point.** Blocking a duplicate is half a solution; a client
+  whose connection dropped also needs to find out what happened. Checkout deletes the cart
+  on success, so without the ledger that retry could only ever be answered "Cart not
+  found" — the shopper would be unable to learn their own order number. Failures are stored
+  too: replaying a decline is correct, re-running one is a second trip to the gateway for a
+  card that already said no.
+- **A request that dies mid-flight keeps its key.** If the work throws, nothing releases
+  the claim, because nobody knows whether the card was charged — later retries get 409
+  until retention expires the key. Trying again under a *new* key is the shopper's
+  decision to make, not the server's.
+
+### The second layer: idempotency at the provider
+
+Our ledger protects the **order**. It cannot protect the **money**, because it only sees requests
+arriving at us — it is blind to a retry of the one outbound call to Stripe. Those are different
+layers and a professional integration needs both.
+
+`StripePaymentGateway` therefore sends its own `Idempotency-Key` on the PaymentIntent create, keyed
+on the order number (`ux_orders_number` makes it unique, and checkout charges exactly once per
+order). Stripe honours a key for 24 hours, so a replayed create returns the **original** intent
+instead of charging again.
+
+That key is what makes the retry above it safe. The adapter retries a charge whose outcome it never
+learned — a dropped socket, a client timeout, a 5xx, a 429 — twice, over about a second
+(`Payments:Stripe:RetryDelaysMs`). A `Retry-After` from a rate limit is honoured over the configured
+backoff. A **4xx is never retried**: Stripe understood the request and answered it, and a declined
+card is a decision, not a blip.
+
+Retrying also doubles as reconciliation in the common case. If the first attempt did create a charge
+and we simply lost the reply, the second attempt under the same key returns that very intent — so
+the ambiguity resolves itself rather than needing a separate lookup.
+
+### When the provider never says what happened
+
+A 4xx is Stripe's answer. A timeout, or a 5xx on every attempt, is Stripe failing to give one — and
+those are not the same thing, because the second may have taken the money. The tempting reading is
+that no answer means no, and it is wrong: declining releases the stock reservation and tells the
+customer their payment failed, which, if the money did move, is the one outcome a shop cannot take
+back.
+
+So the charge has a third outcome, `PaymentStatus.Indeterminate`, and the system is built around one
+rule: **an order only ever moves on a definite answer.**
+
+```
+charge ──► Succeeded ─────────────────────────► Paid
+       ──► Declined ──────────────────────────► PaymentFailed   (reservation released)
+       ──► Pending ───────────────────────────► AwaitingPayment (webhook settles it)
+       ──► Indeterminate ─────────────────────► AwaitingPayment (reservation HELD, exempt from expiry)
+                                                      │  reconciliation probes the provider
+                                                      ├─ succeeded ──► Paid          (+ the receipt that was never sent)
+                                                      ├─ not completed ► PaymentFailed (reservation released)
+                                                      ├─ in progress ─► reference recorded, back on the webhook path
+                                                      └─ still unknown ► left exactly as it was
+```
+
+What checkout does with an indeterminate charge: parks the order in `AwaitingPayment`, **keeps the
+stock reservation**, sets `orders.payment_unconfirmed_at`, deletes the cart, and logs an error naming
+the order. No receipt — there is nothing to confirm yet. The cart goes for the same reason it does on
+an async authorization: leaving it would invite the shopper to re-submit a basket that may already
+have been paid for, and a second order under a fresh key is the duplicate all of this exists to
+prevent.
+
+`payment_unconfirmed_at` does one job: it **exempts the order from the stale-reservation sweep**.
+Without that exemption, parking would only delay the original bug — the sweep would quietly fail a
+paid order ninety minutes later instead of immediately.
+
+### Reconciliation
+
+Holding a reservation is only safe because something comes back to resolve it.
+`ReconcileUnconfirmedPaymentsHandler` runs on each sweep tick, **before** the stale release (so that
+by the time the sweep looks, every order it can see has a known payment outcome), and asks the
+provider what really happened.
+
+The probe is a **search, never a replayed create**. Replaying the create under the same key returns
+the original intent when one exists — but *creates* one when it does not, and the orders being probed
+are precisely those that may never have been charged. `StripePaymentGateway.ProbeAsync` therefore
+queries `/v1/payment_intents/search` on the `order_number` metadata written at charge time.
+
+Four answers, and what each is allowed to do:
+
+| Probe finds | Action |
+|---|---|
+| `succeeded` | Mark Paid, record the reference, **send the receipt checkout could not** |
+| `canceled` / `requires_payment_method` | Mark PaymentFailed — and only now release the stock |
+| `processing` / `requires_action` | Record the reference and clear the mark: the order is back on the webhook path, and back under the expiry sweep so it cannot hold stock for ever |
+| nothing, an error, or a status we do not recognise | **Nothing.** Left for the next pass |
+
+That last row is the discipline. Stripe's search index lags its own writes by up to a minute, so an
+empty result is not evidence of absence — acting on it would fail orders that had been paid seconds
+earlier. An unrecognised status is treated the same way: a provider adding a state we have never seen
+must not get an order failed on a guess.
+
+An order still unresolved after `Reconciliation:EscalateAfterHours` (4h) is **escalated in the logs
+and otherwise left alone** — it keeps its status and its reservation. If neither we nor the provider
+can say what happened, the honest response is to put a human in front of it, not to decide. The log
+line names the order and the provider so it can be settled by hand from the dashboard.
+
+Recording the reference is what makes the webhook path work again, incidentally: an unconfirmed order
+has no reference for `ConfirmPaymentHandler` to correlate on, and the moment reconciliation learns one
+the ordinary settlement route takes over.
+
+### How quickly an unconfirmed charge gets chased
+
+Reconciliation rode the hourly reservation sweep at first, which was correct and too slow: an order
+could hold stock for an hour before anyone asked the provider what had happened. For the one case
+where the customer may already have been charged, an hour is the wrong answer.
+
+A short timer would have been worse than the problem. Polling every minute keeps a serverless
+database awake around the clock to look at a table that is empty on every healthy day — the exact
+cost the hourly interval exists to avoid.
+
+So the worker wakes on demand. Checkout rings `IReconciliationSignal` the moment it parks an order,
+and `PaymentReconciliationSweeper` then stays on a short cycle (`BusyIntervalSeconds`, 60s) only while
+orders remain unresolved, falling back to a long idle wait (`IdleIntervalMinutes`, 30m) once the queue
+is clear. On a good day it sleeps and touches nothing; during an incident it is a minute behind. The
+signal is in-memory and best-effort, so the reservation sweep keeps its own reconciliation pass as the
+backstop for anything parked before a restart.
+
+### What staff can actually see
+
+A mechanism nobody can observe is not finished. Both of these were log lines first, which is the same
+as not existing — nobody should have to grep to find an order holding stock over an unknown payment.
+
+`GET /admin/orders/payment-exceptions` (staff only; it exposes customer emails) returns two lists,
+and the admin orders page shows them above the order list:
+
+- **Unconfirmed** — charges the provider never resolved, each with how long it has been stuck. Empty
+  on a healthy day, because reconciliation clears nearly all of them on its own. This is where you
+  look when it is not.
+- **Possible duplicates** — same customer, same total, inside `OrderReview:DuplicateWindowMinutes`
+  (10m), neither side already failed or cancelled. Prevention is never perfect, so a shop needs
+  somewhere a person can see what slipped through.
+
+The duplicate list is a heuristic and is deliberately never acted on automatically. Two identical
+orders minutes apart are usually a mistake and occasionally a customer who meant it, and no query can
+tell those apart. Ten minutes is the span of a mistake; stretch it to hours and the queue starts
+crying wolf, and a queue that cries wolf goes unread. A retry after a decline is excluded on both
+sides — that is the system working, and nobody was charged twice.
+
+### Refunds
+
+`POST /admin/orders/{id}/refund` returns the full total and puts the stock back on sale. Three rules,
+in this order, and the order is the design:
+
+1. **Only a `Paid` order.** Once it has shipped, the money is half the question — the goods are in
+   transit — and that is a returns workflow. The route refuses, and the UI hides the button, rather
+   than pretending.
+2. **The provider is asked first.** The order is marked `Refunded` only once Stripe agrees. Writing
+   the status first would leave an order claiming a refund over money still in the account.
+3. **An unconfirmed refund is not a failure.** A 5xx or a timeout leaves the outcome unknown, so the
+   order is left exactly as it was and the message says to check the provider — telling staff it
+   failed is how a customer gets paid back twice.
+
+Partial refunds are supported: `POST` with `{ "amount": 5.00 }`, or omit it for the whole remaining
+balance. `orders.refunded_total` is cumulative, and the order only becomes `Refunded` once it reaches
+the total — a part-refunded order is still `Paid`, because goods are still owed, and **stock comes back
+only when nothing is owed**.
+
+Two idempotency layers again, for the same reason as the charge. The provider key is
+`refund-{orderNumber}-{newRunningTotal}`, so retrying one refund presents the same key and pays out
+once, while a genuinely different partial refund later is legitimately a different key. The database
+write is a compare-and-set on `refunded_total`, so two staff refunding at the same moment cannot both
+apply their amount — the loser is declined rather than overpaying. If the provider pays out and that
+write is then declined, the handler says so loudly and records `order.refund_unrecorded`: the money has
+gone, so it cannot be reported as a simple failure.
+
+`Refunded` is deliberately absent from the order state machine's transition table: the generic status
+endpoint cannot move money, so it must not be able to claim a refund happened. The refund route is the
+only way in, and there is a test for that.
+
+### The audit trail
+
+Money moving at a staff member's request needs more than a log line — nobody queries stdout a month
+later when asked who refunded an order. Every order action writes to `audit_events`, the same table
+that already holds logins and lockouts:
+
+| Action | Written when |
+|---|---|
+| `order.refunded` / `order.refunded_partial` | A refund succeeded, with the amount, provider reference and running total |
+| `order.refund_refused` | The provider refused |
+| `order.refund_unconfirmed` | The outcome is unknown — recorded precisely because the order did *not* change |
+| `order.refund_unrecorded` | The provider paid out but the order had already moved; needs reconciling by hand |
+| `order.status_changed` | A fulfilment transition, recording what it moved **from** as well as to |
+| `order.reconciled_paid` / `order.reconciled_failed` | Reconciliation settled an unconfirmed charge (null actor — a system action) |
+
+Entries are written *after* the change lands, so the trail never claims something that did not happen,
+and the failed and unknown attempts are recorded as well as the successes — a trail holding only
+successes would hide the attempt most worth finding. Status values come from domain constants rather
+than the request body, which keeps a caller's newlines from forging entries.
+
+### Watching it
+
+Each reconciliation pass logs one warning line carrying the count of orders still unresolved, which is
+what a log-based alert rule can watch; the per-order errors say *which*, this says *how bad*. The same
+figure is in the review list for a dashboard. That is the honest limit of what is here: there is no
+pager, so monitoring has to be wired up outside the app.
+
+### What the client has to get right
+
+Uniqueness of the key is the **client's** responsibility, and it cannot be anything else: a key is
+the caller asserting "this is the same request I sent before," and the server has no way to
+contradict it. Identical key plus identical body is indistinguishable from the retry this feature
+exists to serve, so a client that reuses a key for a genuinely new purchase gets one order and two
+successes.
+
+A key may contain only letters, digits and `- _ . : +`, and anything else is refused. That is a
+log-safety guard as much as a validation one: the key is written to the log, and it arrives in a
+request header, so a value carrying newlines could forge whole entries and make an attacker's fiction
+indistinguishable from the record (CWE-117). Rejecting beats escaping — nothing legitimate needs a
+control character in an opaque token, so the narrow set costs callers nothing and they are told rather
+than having their key quietly rewritten.
+
+The rule is therefore **a fresh key per intent, not per connection** — `crypto.randomUUID()` when
+the shopper commits to buying, reused for every retry of *that* attempt, discarded once the attempt
+is resolved.
+
+Two things keep a client honest rather than trusting it:
+
+- A replayed response carries `Idempotent-Replay: true`, so a caller that believed it was placing a
+  new order can tell that it wasn't, and every replay is logged with its key.
+- Scoping the key to the **cart** closes the case structurally here: checkout deletes the cart on
+  success, so a second genuine purchase has no cart to reference and cannot reuse the scope. A
+  user-scoped or global key would have left it open.
+
+What deliberately is *not* attempted: inferring intent. Any rule clever enough to catch a false
+reuse — a time window, a payload heuristic — also catches the legitimate retry, which trades a real
+bug for a hypothetical one.
+
+Scope is the cart, not the customer: a key only has to be unique among attempts to buy one
+basket, and a cart id is unguessable, so one shopper's key can never name another's order.
+Keys are forgotten after **24 hours** (`Idempotency:RetentionHours`) by the same background
+sweep that releases stale reservations — two jobs of the same kind, and one timer, which
+keeps the serverless database asleep between passes.
+
+The SPA sends a key per checkout attempt, held in a ref so a re-render or a second click
+reuses it. It is retired only on a **400**: a declined card means whatever the shopper
+changes next is genuinely a different request, and answering that with the original refusal
+would trap them.
+
 ### The webhook endpoint
 
 ```

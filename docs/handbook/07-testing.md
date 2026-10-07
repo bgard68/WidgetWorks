@@ -34,6 +34,28 @@ they’re deterministic and need no database. Coverage includes:
 - Pricing — per-state tax (known / 0% / unknown), shipping tiers, quote pipeline.
 - Checkout — success (pay + reserve + clear cart), decline (release + keep cart),
   async pending (park in AwaitingPayment), insufficient stock, validation.
+- Checkout idempotency — a repeated submit replays the first order (one order, one
+  reservation, one receipt), a key still in flight is refused rather than charged twice, a
+  key reused for a different body is refused, a declined attempt replays as the same
+  decline, and key retention forgets what it should.
+- Refunds — only a paid order, the provider asked before the order is written, one key across
+  every attempt so a retry pays out once, an unconfirmed refund leaving the order untouched,
+  and `Refunded` being unreachable through the generic status endpoint. Partial refunds
+  accumulate, cannot exceed what is owed, keep the order `Paid`, and release stock only on
+  the one that settles it.
+- The audit trail — who refunded what, recorded after the change lands, including the
+  refusals and the unknown outcomes, and a payout the order could not record being flagged
+  for reconciling rather than reported as a plain failure.
+- Staff review list — an unconfirmed charge is visible with how long it has been stuck; two
+  identical orders minutes apart are flagged, the same order hours later is not, and a retry
+  after a decline never is.
+- Payment reconciliation — a charge the provider never confirmed parks the order with its
+  stock held, survives an expiry sweep that would otherwise fail it, and is then settled
+  from what the provider actually says: paid (with the receipt checkout could not send),
+  not completed (stock released only now), still in progress (handed back to the webhook
+  path), or still unknown — which changes nothing at all and escalates once it is old
+  enough. Plus the Stripe adapter's side: one idempotency key across every retry, no retry
+  on an answer Stripe actually gave, and a probe that searches rather than creating.
 - Payments — async settlement (webhook → Paid / PaymentFailed, idempotent, unknown ref).
 - Orders — lifecycle transitions (Paid→Shipped→Delivered / Cancelled).
 
@@ -101,6 +123,16 @@ fake would only prove the fake works:
   cart upsert, cascading deletes.
 - **Idempotent startup** — migrations journaled, and a seeder that can run on every boot
   without duplicating an account or resetting a password someone changed.
+- **Refund concurrency** — two refunds racing on one order, both reading a zero running total and
+  both trying to write the same new one: exactly one applies. Overpaying is prevented by the
+  database, which is the only place that claim can be tested.
+- **The reconciliation exemption** — an unconfirmed order is invisible to the stale-reservation
+  query and visible to the reconciliation one, in real SQL. The whole design rests on that pair of
+  queries disagreeing about the same row.
+- **Atomic idempotency claims** — thirty-two concurrent claims on one key, exactly one
+  winner. In the unit suite the ledger is a dictionary behind a lock, which proves the
+  handler honours the contract but not that the contract holds; `on conflict do nothing`
+  over real concurrent connections is the only place that promise is actually kept.
 
 It creates and drops a **throwaway database per run**, migrated by the same DbUp scripts the
 app runs at startup, so it never touches developer or demo data. Point it at any Postgres:
@@ -137,6 +169,13 @@ this suite proves the part neither can — the HTTP surface itself:
   its database is gone (`DiagnosticsApiTests`, `DatabaseOutageApiTests`).
 - **Config and background work** — the shipped `appsettings.json` stays honest
   (`ShippedConfigurationTests`), and the reservation sweep's on/off switch (`ReservationSweeperTests`).
+- **Checkout under duplicate load** (`CheckoutIdempotencyLoadTests`) — fifty simultaneous copies of
+  one request through the real pipeline, and forty shoppers submitting three times each. The order
+  count is read back **from the database**, because an API agreeing with itself proves nothing.
+  These are correctness tests with contention, not a benchmark: elapsed times are printed for
+  context and never asserted on, since a timing threshold on shared CI hardware fails for reasons
+  unrelated to the code. For the record, removing the `Idempotency-Key` header from that fifty-copy
+  burst produces **24 orders** instead of one — the suite has teeth.
 
 Run them against the compose database, the same way as the repository tests:
 

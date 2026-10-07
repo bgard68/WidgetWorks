@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { PasswordRequirements } from '../components/PasswordRequirements'
+import { MIN_PASSWORD_LENGTH, meetsPasswordPolicy } from '../lib/passwordPolicy'
 
 export function RegisterPage() {
   const { register, login } = useAuth()
@@ -9,6 +11,10 @@ export function RegisterPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // The server refuses a weak password either way; this only decides whether the button is worth
+  // pressing yet, so the shopper is not told no after submitting something they could see was short.
+  const passwordOk = meetsPasswordPolicy(password)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -40,15 +46,16 @@ export function RegisterPage() {
             <input
               type="password"
               required
-              minLength={8}
+              minLength={MIN_PASSWORD_LENGTH}
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <span className="help">At least 8 characters.</span>
+            {!password && <span className="help">Pick something only you would use.</span>}
+            <PasswordRequirements password={password} />
           </label>
           {error && <p className="alert alert-err">{error}</p>}
-          <button className="btn btn-primary btn-block btn-lg" disabled={busy}>
+          <button className="btn btn-primary btn-block btn-lg" disabled={busy || !passwordOk}>
             {busy ? 'Creating account…' : 'Create account'}
           </button>
         </form>

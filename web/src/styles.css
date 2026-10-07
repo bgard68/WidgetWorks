@@ -218,6 +218,14 @@ select{
 }
 .help{font-size:.8rem;color:var(--ink-3)}
 
+/* Password requirements, ticked off as they are met. State is carried by the glyph as well as the
+   colour, so the list still reads correctly without colour vision. */
+.pwreqs{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:3px}
+.pwreq{display:flex;align-items:center;gap:7px;font-size:.8rem;color:var(--ink-3)}
+.pwreq-ico{flex:0 0 auto;width:1em;font-weight:700;text-align:center}
+.pwreq.met{color:var(--ok)}
+.pwreq.unmet{color:var(--danger)}
+
 /* Alerts ----------------------------------------------------------------- */
 .alert{
   display:flex;gap:10px;align-items:flex-start;

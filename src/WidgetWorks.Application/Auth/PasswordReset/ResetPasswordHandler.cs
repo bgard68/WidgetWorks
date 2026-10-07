@@ -1,5 +1,6 @@
 using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Domain.Common;
+using WidgetWorks.Domain.Users;
 
 namespace WidgetWorks.Application.Auth.PasswordReset;
 
@@ -20,9 +21,11 @@ public sealed class ResetPasswordHandler(
 {
     public async Task<Result> Handle(ResetPasswordCommand command, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(command.NewPassword) || command.NewPassword.Length < 8)
+        // The same policy registration applies. Reset used to be the softer of the two paths, which
+        // made it the way to get a weak password onto an account.
+        if (!PasswordPolicy.IsAcceptable(command.NewPassword))
         {
-            return Result.Fail("Password must be at least 8 characters.");
+            return Result.Fail(PasswordPolicy.Describe(command.NewPassword));
         }
 
         if (string.IsNullOrWhiteSpace(command.Token))

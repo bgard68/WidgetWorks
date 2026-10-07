@@ -76,10 +76,10 @@ public class PasswordResetTests
         await Request(c).Handle(new RequestPasswordResetCommand("jane@example.com"), CancellationToken.None);
         var original = c.User.SecurityStamp;
 
-        var result = await Reset(c).Handle(new ResetPasswordCommand(c.Gen.Last, "new-password"), CancellationToken.None);
+        var result = await Reset(c).Handle(new ResetPasswordCommand(c.Gen.Last, "Str0ng!Passw0rd"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.True(c.Hasher.Verify("new-password", c.Users.Store[c.User.Id].PasswordHash!));
+        Assert.True(c.Hasher.Verify("Str0ng!Passw0rd", c.Users.Store[c.User.Id].PasswordHash!));
         Assert.NotEqual(original, c.Users.Store[c.User.Id].SecurityStamp);
         Assert.NotNull(c.Tokens.Tokens[0].UsedAt);
     }
@@ -89,9 +89,9 @@ public class PasswordResetTests
     {
         var c = Setup();
         await Request(c).Handle(new RequestPasswordResetCommand("jane@example.com"), CancellationToken.None);
-        await Reset(c).Handle(new ResetPasswordCommand(c.Gen.Last, "new-password"), CancellationToken.None);
+        await Reset(c).Handle(new ResetPasswordCommand(c.Gen.Last, "Str0ng!Passw0rd"), CancellationToken.None);
 
-        var again = await Reset(c).Handle(new ResetPasswordCommand(c.Gen.Last, "another-password"), CancellationToken.None);
+        var again = await Reset(c).Handle(new ResetPasswordCommand(c.Gen.Last, "An0ther!Passw0rd"), CancellationToken.None);
 
         Assert.True(again.IsFailure);
     }
@@ -103,7 +103,7 @@ public class PasswordResetTests
         await Request(c).Handle(new RequestPasswordResetCommand("jane@example.com"), CancellationToken.None);
         c.Clock.Advance(TimeSpan.FromMinutes(31));
 
-        var result = await Reset(c).Handle(new ResetPasswordCommand(c.Gen.Last, "new-password"), CancellationToken.None);
+        var result = await Reset(c).Handle(new ResetPasswordCommand(c.Gen.Last, "Str0ng!Passw0rd"), CancellationToken.None);
 
         Assert.True(result.IsFailure);
     }
@@ -143,14 +143,14 @@ public class PasswordResetTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("short")]
-    public async Task Reset_requires_eight_characters_of_password(string password)
+    public async Task Reset_refuses_a_password_the_policy_rejects(string password)
     {
         var c = Setup();
 
         var result = await Reset(c).Handle(new ResetPasswordCommand("whatever", password), CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("Password must be at least 8 characters.", result.Error);
+        Assert.StartsWith("Password needs:", result.Error);
     }
 
     [Theory]
@@ -160,7 +160,7 @@ public class PasswordResetTests
     {
         var c = Setup();
 
-        var result = await Reset(c).Handle(new ResetPasswordCommand(token, "long-enough-pw"), CancellationToken.None);
+        var result = await Reset(c).Handle(new ResetPasswordCommand(token, "Str0ng!Passw0rd"), CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Invalid or expired reset link.", result.Error);
@@ -189,8 +189,8 @@ public class PasswordResetTests
             CreatedAt = now,
         });
 
-        var admin = await Reset(c).Handle(new ResetPasswordCommand("planted-admin", "long-enough-pw"), CancellationToken.None);
-        var orphan = await Reset(c).Handle(new ResetPasswordCommand("planted-orphan", "long-enough-pw"), CancellationToken.None);
+        var admin = await Reset(c).Handle(new ResetPasswordCommand("planted-admin", "Str0ng!Passw0rd"), CancellationToken.None);
+        var orphan = await Reset(c).Handle(new ResetPasswordCommand("planted-orphan", "Str0ng!Passw0rd"), CancellationToken.None);
 
         Assert.Equal("Invalid or expired reset link.", admin.Error);
         Assert.Equal("Invalid or expired reset link.", orphan.Error);

@@ -24,7 +24,7 @@ public class AuthApiTests(ApiFixture api)
     }
 
     [Fact]
-    public async Task Register_with_a_short_password_is_a_400_with_a_reason()
+    public async Task Register_with_a_password_the_policy_rejects_is_a_400_saying_what_is_missing()
     {
         using var client = api.Client();
 
@@ -33,7 +33,15 @@ public class AuthApiTests(ApiFixture api)
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Contains("8 characters", body.GetProperty("error").GetString());
+
+        // "short" fails four of the five rules, and the reply says which — a client can show the
+        // shopper what to fix without guessing from a generic refusal.
+        var error = body.GetProperty("error").GetString()!;
+        Assert.StartsWith("Password needs:", error);
+        Assert.Contains("at least 10 characters", error);
+        Assert.Contains("an uppercase letter", error);
+        Assert.Contains("a number", error);
+        Assert.Contains("a symbol", error);
     }
 
     [Fact]
@@ -99,7 +107,7 @@ public class AuthApiTests(ApiFixture api)
         using var client = api.Client();
 
         var response = await client.PostAsJsonAsync("/auth/reset-password",
-            new { token = "bogus", newPassword = "long-enough-pw" });
+            new { token = "bogus", newPassword = "Str0ng!Passw0rd" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

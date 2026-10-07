@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { PasswordRequirements } from '../components/PasswordRequirements'
+import { MIN_PASSWORD_LENGTH, meetsPasswordPolicy } from '../lib/passwordPolicy'
 
 export function ResetPasswordPage() {
   const [params] = useSearchParams()
@@ -45,15 +47,16 @@ export function ResetPasswordPage() {
                 <input
                   type="password"
                   required
-                  minLength={8}
+                  minLength={MIN_PASSWORD_LENGTH}
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
-                <span className="help">At least 8 characters.</span>
+                {!password && <span className="help">Pick something only you would use.</span>}
+                <PasswordRequirements password={password} />
               </label>
               {error && <p className="alert alert-err">{error}</p>}
-              <button className="btn btn-primary btn-block btn-lg" disabled={!token || busy}>
+              <button className="btn btn-primary btn-block btn-lg" disabled={!token || busy || !meetsPasswordPolicy(password)}>
                 {busy ? 'Resetting…' : 'Reset password'}
               </button>
             </form>

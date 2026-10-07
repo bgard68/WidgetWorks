@@ -548,7 +548,7 @@ describe('RegisterPage', () => {
     renderWithProviders(<RegisterPage />, { at: '/register', routes: { '/login': <h1>Sign in</h1> } })
 
     await user.type(screen.getByLabelText(/Email/i), 'new@example.com')
-    await user.type(screen.getByLabelText(/Password/i), 'long-enough-pw')
+    await user.type(screen.getByLabelText(/Password/i), 'Str0ng!Passw0rd')
     await user.click(screen.getByRole('button', { name: /Create account|Create your account|Sign up/i }))
 
     await waitFor(() => {
@@ -566,7 +566,7 @@ describe('RegisterPage', () => {
 
     renderWithProviders(<RegisterPage />, { at: '/register', routes: { '/login': <h1>Sign in</h1> } })
     await user.type(screen.getByLabelText(/Email/i), 'taken@example.com')
-    await user.type(screen.getByLabelText(/Password/i), 'long-enough-pw')
+    await user.type(screen.getByLabelText(/Password/i), 'Str0ng!Passw0rd')
     await user.click(screen.getByRole('button', { name: /Create account|Create your account|Sign up/i }))
 
     expect(await screen.findByText(/Unable to register/)).toBeInTheDocument()
@@ -582,7 +582,7 @@ describe('RegisterPage', () => {
 
     renderWithProviders(<RegisterPage />, { at: '/register', routes: { '/store': <h1>Storefront</h1> } })
     await user.type(screen.getByLabelText(/Email/i), 'new@example.com')
-    await user.type(screen.getByLabelText(/Password/i), 'long-enough-pw')
+    await user.type(screen.getByLabelText(/Password/i), 'Str0ng!Passw0rd')
     await user.click(screen.getByRole('button', { name: /Create account|Create your account|Sign up/i }))
 
     // Registering then being asked to log in again would be a pointless second step.
@@ -597,9 +597,69 @@ describe('RegisterPage', () => {
 
     renderWithProviders(<RegisterPage />, { at: '/register', routes: { '/login': <h1>Sign in</h1> } })
     await user.type(screen.getByLabelText(/Email/i), 'new@example.com')
-    await user.type(screen.getByLabelText(/Password/i), 'long-enough-pw')
+    await user.type(screen.getByLabelText(/Password/i), 'Str0ng!Passw0rd')
     await user.click(screen.getByRole('button', { name: /Create account|Create your account|Sign up/i }))
 
     expect(await screen.findByText('Registration failed.')).toBeInTheDocument()
+  })
+
+  it('ticks each requirement off as it is satisfied', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<RegisterPage />, { at: '/register', routes: { '/login': <h1>Sign in</h1> } })
+
+    const password = screen.getByLabelText(/^Password/i)
+
+    // Nothing until there is something to say: five red crosses against an untouched field reads as a
+    // telling-off before the shopper has done anything.
+    expect(screen.queryByRole('list', { name: 'Password requirements' })).not.toBeInTheDocument()
+
+    await user.type(password, 'abc')
+
+    // Re-queried rather than held in a variable: clearing the field unmounts the list entirely, so a
+    // reference captured earlier would be a detached node still showing the old answers.
+    const rule = (text: string | RegExp) =>
+      within(screen.getByRole('list', { name: 'Password requirements' })).getByText(text).closest('li')
+
+    // Lowercase is satisfied; the other four are not, and each says so rather than only being coloured.
+    expect(rule('A lowercase letter')).toHaveClass('met')
+    expect(rule('An uppercase letter')).toHaveClass('unmet')
+    expect(rule('A number')).toHaveClass('unmet')
+    expect(rule(/A symbol/)).toHaveClass('unmet')
+    expect(rule('At least 10 characters')).toHaveClass('unmet')
+
+    await user.clear(password)
+    await user.type(password, 'Str0ng!Passw0rd')
+
+    // All five, and each carries its state in text as well as colour — about one man in twelve cannot
+    // tell the red from the green, and a screen reader announces neither.
+    const rows = within(screen.getByRole('list', { name: 'Password requirements' })).getAllByRole('listitem')
+    expect(rows).toHaveLength(5)
+    for (const row of rows) {
+      expect(row).toHaveClass('met')
+      expect(row).toHaveTextContent('— met')
+    }
+  })
+
+  it('will not let the account be created until the password qualifies', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<RegisterPage />, { at: '/register', routes: { '/login': <h1>Sign in</h1> } })
+
+    const submit = screen.getByRole('button', { name: /Create account|Create your account|Sign up/i })
+
+    // Captured once: the requirements list is labelled "Password requirements", so once it appears a
+    // /Password/i lookup matches two things.
+    const password = screen.getByLabelText(/^Password/i)
+
+    expect(submit).toBeDisabled()
+
+    await user.type(screen.getByLabelText(/Email/i), 'new@example.com')
+    await user.type(password, 'short')
+
+    // The server would refuse this anyway; stopping here means the shopper is not told no after
+    // submitting something they could already see was wrong.
+    expect(submit).toBeDisabled()
+
+    await user.type(password, 'Str0ng!Passw0rd')
+    expect(submit).toBeEnabled()
   })
 })

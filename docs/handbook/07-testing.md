@@ -29,6 +29,11 @@ they’re deterministic and need no database. Coverage includes:
   revoked rejected), password reset (single-use, expiry, stamp rotation, protected-admin
   excluded), Google login (provision / link / unverified-refused).
 - 2FA — TOTP verify, challenge login, recovery codes.
+- Password policy — each rule is the only thing between a password and acceptance (so a rule
+  that stopped being evaluated shows up as a password that should have been refused), nothing
+  at all fails every rule, surrounding spaces are kept because they are part of the password,
+  the refusal names what is missing without echoing the password, and the rule codes are
+  pinned as the contract the web client mirrors.
 - Catalog — inventory invariants, immutable-admin guard, create/update/adjust handlers.
 - Cart — cap-at-available, accumulate, update-to-zero, guest→user merge.
 - Pricing — per-state tax (known / 0% / unknown), shipping tiers, quote pipeline.

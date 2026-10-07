@@ -214,7 +214,7 @@ public class AuthSessionTests
     public async Task Register_requires_an_email_address(string email)
     {
         var c = Setup();
-        var result = await Register(c, new FakeEmailSender()).Handle(new RegisterCommand(email, "long-enough-pw"), CancellationToken.None);
+        var result = await Register(c, new FakeEmailSender()).Handle(new RegisterCommand(email, "Str0ng!Passw0rd"), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("A valid email is required.", result.Error);
@@ -224,13 +224,16 @@ public class AuthSessionTests
     [InlineData("short")]
     [InlineData("")]
     [InlineData(null)]
-    public async Task Register_requires_eight_characters_of_password(string? password)
+    public async Task Register_refuses_a_password_the_policy_rejects(string? password)
     {
         var c = Setup();
         var result = await Register(c, new FakeEmailSender()).Handle(new RegisterCommand("new@example.com", password!), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("Password must be at least 8 characters.", result.Error);
+
+        // Names what is missing rather than restating the whole policy, so the reply is something to
+        // act on rather than a wall to diff against what was typed.
+        Assert.StartsWith("Password needs:", result.Error);
     }
 
     [Fact]
@@ -238,7 +241,7 @@ public class AuthSessionTests
     {
         var c = Setup();
         var result = await Register(c, new FakeEmailSender())
-            .Handle(new RegisterCommand(" Jane@Example.com ", "long-enough-pw"), CancellationToken.None);
+            .Handle(new RegisterCommand(" Jane@Example.com ", "Str0ng!Passw0rd"), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
 
@@ -253,13 +256,13 @@ public class AuthSessionTests
         var c = Setup();
         var email = new FakeEmailSender();
 
-        var result = await Register(c, email).Handle(new RegisterCommand(" New@Example.com ", "long-enough-pw"), CancellationToken.None);
+        var result = await Register(c, email).Handle(new RegisterCommand(" New@Example.com ", "Str0ng!Passw0rd"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         var created = Assert.Single(c.Users.Store.Values, u => u.NormalizedEmail == "NEW@EXAMPLE.COM");
         Assert.Equal("New@Example.com", created.Email);
         Assert.Equal(UserRoles.Customer, created.Role);
-        Assert.Equal("hash:long-enough-pw", created.PasswordHash);
+        Assert.Equal("hash:Str0ng!Passw0rd", created.PasswordHash);
         Assert.NotEqual(Guid.Empty, created.SecurityStamp);
         Assert.Equal(Now, created.CreatedAt);
         Assert.Single(email.Sent, m => m.To == "New@Example.com");
@@ -272,7 +275,7 @@ public class AuthSessionTests
 
         var logger = new RecordingLogger<RegisterHandler>();
         var result = await Register(c, new ThrowingEmailSender(), logger)
-            .Handle(new RegisterCommand("new@example.com", "long-enough-pw"), CancellationToken.None);
+            .Handle(new RegisterCommand("new@example.com", "Str0ng!Passw0rd"), CancellationToken.None);
 
         // A dead mail server must not cost someone their account.
         Assert.True(result.IsSuccess);

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ForgotPasswordPage } from './ForgotPasswordPage'
 import { ResetPasswordPage } from './ResetPasswordPage'
@@ -49,12 +49,12 @@ describe('ResetPasswordPage', () => {
     const user = userEvent.setup()
 
     renderWithProviders(<ResetPasswordPage />, { at: '/reset-password?token=tok-123', path: '/reset-password' })
-    await user.type(screen.getByLabelText(/New password/), 'a-brand-new-password')
+    await user.type(screen.getByLabelText(/New password/), 'Str0ng!Passw0rd')
     await user.click(screen.getByRole('button', { name: /Reset|Save|Change/i }))
 
     await waitFor(() => {
       const post = calls.find((c) => c.url.includes('/auth/reset-password'))
-      expect(JSON.parse(String(post?.init?.body))).toEqual({ token: 'tok-123', newPassword: 'a-brand-new-password' })
+      expect(JSON.parse(String(post?.init?.body))).toEqual({ token: 'tok-123', newPassword: 'Str0ng!Passw0rd' })
     })
   })
 
@@ -66,7 +66,7 @@ describe('ResetPasswordPage', () => {
     const user = userEvent.setup()
 
     renderWithProviders(<ResetPasswordPage />, { at: '/reset-password?token=stale', path: '/reset-password' })
-    await user.type(screen.getByLabelText(/New password/), 'a-brand-new-password')
+    await user.type(screen.getByLabelText(/New password/), 'Str0ng!Passw0rd')
     await user.click(screen.getByRole('button', { name: /Reset|Save|Change/i }))
 
     expect(await screen.findByText(/That reset link has expired/)).toBeInTheDocument()
@@ -77,7 +77,7 @@ describe('ResetPasswordPage', () => {
     const user = userEvent.setup()
 
     renderWithProviders(<ResetPasswordPage />, { at: '/reset-password?token=tok-123', path: '/reset-password' })
-    await user.type(screen.getByLabelText(/New password/), 'a-brand-new-password')
+    await user.type(screen.getByLabelText(/New password/), 'Str0ng!Passw0rd')
     await user.click(screen.getByRole('button', { name: /Reset|Save|Change/i }))
 
     expect(await screen.findByText('Reset failed.')).toBeInTheDocument()
@@ -192,5 +192,25 @@ describe('OrderDetailPage', () => {
     renderWithProviders(<OrderDetailPage />, { at: '/orders', path: '/orders' })
 
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('ResetPasswordPage — the password rules', () => {
+  it('holds the same checklist as registration, because the server holds one policy', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ResetPasswordPage />, { at: '/reset-password?token=tok-123', path: '/reset-password' })
+
+    const submit = screen.getByRole('button', { name: /Reset|Save|Change/i })
+
+    await user.type(screen.getByLabelText(/New password/), 'weak')
+    const list = screen.getByRole('list', { name: 'Password requirements' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(5)
+    expect(submit).toBeDisabled()
+
+    // Reset used to be the softer of the two paths — a weak password could be set here that
+    // registration would have refused. Both now defer to the same rules.
+    await user.clear(screen.getByLabelText(/New password/))
+    await user.type(screen.getByLabelText(/New password/), 'Str0ng!Passw0rd')
+    expect(submit).toBeEnabled()
   })
 })

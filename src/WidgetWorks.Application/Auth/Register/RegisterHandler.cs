@@ -23,9 +23,10 @@ public sealed class RegisterHandler(
             return Result.Fail("A valid email is required.");
         }
 
-        if (string.IsNullOrWhiteSpace(command.Password) || command.Password.Length < 8)
+        // One policy, shared with password reset, so neither path can be the soft way in.
+        if (!PasswordPolicy.IsAcceptable(command.Password))
         {
-            return Result.Fail("Password must be at least 8 characters.");
+            return Result.Fail(PasswordPolicy.Describe(command.Password));
         }
 
         var normalized = emailAddress.ToUpperInvariant();

@@ -73,6 +73,17 @@ host, and infrastructure choices (DB, payment provider, email) are swappable beh
 - **`kid` key rotation** — a signing-key ring signs with the active key and still validates
   tokens signed by previous, non-revoked keys; unknown/revoked `kid` → rejected.
 - **2FA** — TOTP (authenticator app) with single-use, hashed recovery codes.
+- **One password policy, two callers.** `PasswordPolicy` (domain) holds the rules — 10 characters,
+  upper, lower, a number, a symbol — and both `RegisterHandler` and `ResetPasswordHandler` defer to
+  it. They did not before: reset only checked length, which made it the way to get a weak password
+  onto an account. The refusal names the unmet rules rather than restating the policy, and the web
+  client mirrors the same list to tick requirements off as someone types. That mirror is a
+  convenience; the server is the authority, so a client that skips the checklist gains nothing.
+
+  These are composition rules, and the honest summary is that they stop the careless password, not
+  the determined attacker — lockout, rate limiting and the security stamp handle that. Length-plus-
+  breach-list would be the better policy, but it needs a breach corpus this project has no business
+  shipping.
 - **The order owns its fulfilment rules.** `OrderStatus.AllowedNext`/`CanTransition` hold the
   transition table and `Order.TransitionTo` applies it, so the invariant travels with the
   entity instead of living in whichever handler happens to call it. `UpdateOrderStatusHandler`

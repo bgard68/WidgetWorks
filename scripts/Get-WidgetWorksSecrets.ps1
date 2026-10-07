@@ -1,41 +1,53 @@
 <#
 .SYNOPSIS
-    Reads the four GitHub Actions secrets WidgetWorks needs out of Azure, and optionally writes them
-    straight into the repo.
+    Reads everything the WidgetWorks deployment workflows need out of Azure — four Actions secrets
+    and two Actions variables — and optionally writes them straight into the repo.
 
 .DESCRIPTION
-    GitHub secrets are write-only — nothing can read them back, which is why they cannot simply be
-    copied between repositories. All four are recoverable from Azure instead:
+    GitHub secrets are write-only: nothing can read them back, which is why they cannot simply be
+    copied between repositories. Azure still knows all of it, so the whole set is recoverable rather
+    than lost.
+
+    Secrets (gh secret):
 
       AZURE_SUBSCRIPTION_ID            the active subscription
       AZURE_TENANT_ID                  the directory behind it
       AZURE_CLIENT_ID                  the identity GitHub signs in as (OIDC, no password)
       AZURE_STATIC_WEB_APPS_API_TOKEN  the Static Web App deployment token  <-- the only real credential
 
-    The first three are identifiers, not credentials. With OIDC there is no password anywhere: signing
-    in requires a token GitHub issues to one specific repository and branch or environment, so the
-    client id on its own grants nothing. The fourth is different — it is a live deployment key, and
-    anyone holding it can push a site to the Static Web App. -Show prints it, and therefore leaves it
-    in your shell history and scrollback. Prefer -SetInGitHub, which pipes it to gh without displaying
-    it at all.
+    Variables (gh variable):
+
+      VITE_API_BASE_URL                the API origin the SPA calls
+      VITE_GOOGLE_CLIENT_ID            the Google sign-in client id
+
+    The split is not arbitrary and the script treats the two halves differently. The variables are
+    baked into the JavaScript bundle at build time, so they are published to every visitor the moment
+    the site deploys — they are configuration, not credentials, and masking them here would be
+    theatre. The first three secrets are identifiers too: with OIDC there is no password anywhere,
+    and signing in requires a token GitHub issues to one specific repository and branch or
+    environment, so the client id alone grants nothing.
+
+    Only AZURE_STATIC_WEB_APPS_API_TOKEN is a live credential — anyone holding it can push a site to
+    the Static Web App. It is masked by default. -Show prints it and therefore leaves it in your shell
+    history and scrollback; prefer -SetInGitHub, which pipes it to gh without displaying it at all.
 
 .EXAMPLE
     .\Get-WidgetWorksSecrets.ps1
-    Lists each secret name with a masked value, so you can see what was found without exposing it.
+    Reports what was found, with the deployment token masked.
 
 .EXAMPLE
     .\Get-WidgetWorksSecrets.ps1 -SetInGitHub
-    Writes all four into the repo without printing the deployment token.
+    Writes all six into the repo without printing the deployment token.
 #>
 [CmdletBinding()]
 param(
     [string] $ResourceGroup = 'rg-widgetworks',
     [string] $Repo          = 'bgard68/WidgetWorks',
 
-    # Print the values, including the deployment token. Leaves them in your shell history.
+    # Print the deployment token as well. Leaves it in your shell history.
     [switch] $Show,
 
-    # Write the values into the repo's Actions secrets via gh. Does not print the token.
+    # Write the secrets and variables into the repo via gh. Does not print the token.
     [switch] $SetInGitHub
 )
 
@@ -55,9 +67,9 @@ Write-Host 'Reading from Azure...' -ForegroundColor Cyan
 # ---------------------------------------------------------------- subscription + tenant
 # These come from the *active* subscription. If you hold more than one — and more than one directory
 # — az account show reports whichever happens to be current, which need not be the one hosting
-# WidgetWorks. The signed-in account and subscription name are echoed below for exactly that reason:
-# two subscriptions sharing a display name is normal, and silently reading the wrong one produces
-# four plausible-looking values that authenticate against nothing.
+# WidgetWorks. The signed-in account and subscription are echoed below for exactly that reason: two
+# subscriptions sharing a display name is normal, and silently reading the wrong one yields four
+# plausible-looking values that authenticate against nothing.
 $account = az account show --output json 2>$null | ConvertFrom-Json
 if (-not $account) { throw 'Not signed in to Azure. Run: az login' }
 
@@ -117,6 +129,33 @@ if ($swa) {
     Write-Warning 'Get the token from the portal instead: your Static Web App -> Manage deployment token.'
 }
 
+# ---------------------------------------------------------------- the build-time variables
+# Derived, not hardcoded. The API origin comes from the App Service's own hostname, and the Google
+# client id from the API's app settings — where it has to be anyway, because the API validates the
+# `aud` claim on Google's ID tokens against it. Reading it from there rather than keeping a second
+# copy in this script is what stops the two drifting apart: a mismatch would let the SPA mint tokens
+# the API then refuses, which presents as sign-in failing for no visible reason.
+$apiBaseUrl = $null
+$apiApp = az webapp list --resource-group $ResourceGroup --query "[0].{name:name, host:defaultHostName}" `
+              --output json 2>$null | ConvertFrom-Json
+if ($apiApp) {
+    $apiBaseUrl = "https://$($apiApp.host)"
+    Write-Host "  api           : $($apiApp.name)"
+} else {
+    Write-Warning "No App Service found in resource group '$ResourceGroup'. VITE_API_BASE_URL will be blank."
+}
+
+$googleClientId = $null
+if ($apiApp) {
+    $googleClientId = az webapp config appsettings list --resource-group $ResourceGroup --name $apiApp.name `
+                          --query "[?name=='Google__ClientId'].value | [0]" --output tsv 2>$null
+    if (-not $googleClientId) {
+        # Blank is a valid state rather than a failure: the sign-in button is hidden when it is unset,
+        # which is how the stack runs locally and in CI.
+        Write-Warning 'Google__ClientId is not set on the API. VITE_GOOGLE_CLIENT_ID will be blank, which hides the sign-in button.'
+    }
+}
+
 # ---------------------------------------------------------------- report
 $secrets = [ordered]@{
     AZURE_SUBSCRIPTION_ID           = $subscriptionId
@@ -125,43 +164,68 @@ $secrets = [ordered]@{
     AZURE_STATIC_WEB_APPS_API_TOKEN = $swaToken
 }
 
-Write-Host ''
-foreach ($name in $secrets.Keys) {
-    $value = $secrets[$name]
-    if (-not $value) {
-        Write-Host ('{0,-32} NOT FOUND' -f $name) -ForegroundColor Red
-    } elseif ($Show) {
-        Write-Host ('{0,-32} {1}' -f $name, $value) -ForegroundColor Green
-    } else {
-        # Enough to recognise a value, not enough to use it.
-        $masked = if ($value.Length -gt 8) {
-            $value.Substring(0, 4) + '...' + $value.Substring($value.Length - 4)
+# Public by construction — they ship inside the JavaScript bundle, and gh prints them in plain text
+# when you list them. Masking them would only make this script harder to verify.
+$variables = [ordered]@{
+    VITE_API_BASE_URL     = $apiBaseUrl
+    VITE_GOOGLE_CLIENT_ID = $googleClientId
+}
+
+function Write-Table([string] $Heading, $Table, [bool] $Mask) {
+    Write-Host ''
+    Write-Host $Heading -ForegroundColor Cyan
+    foreach ($name in $Table.Keys) {
+        $value = $Table[$name]
+        if (-not $value) {
+            Write-Host ('  {0,-32} NOT FOUND' -f $name) -ForegroundColor Red
+        } elseif ($Show -or -not $Mask) {
+            Write-Host ('  {0,-32} {1}' -f $name, $value) -ForegroundColor Green
         } else {
-            '***'
+            # Enough to recognise the value, not enough to use it.
+            $masked = if ($value.Length -gt 8) {
+                $value.Substring(0, 4) + '...' + $value.Substring($value.Length - 4)
+            } else {
+                '***'
+            }
+            Write-Host ('  {0,-32} {1}' -f $name, $masked) -ForegroundColor Green
         }
-        Write-Host ('{0,-32} {1}' -f $name, $masked) -ForegroundColor Green
     }
 }
 
+# Masked or not strictly by which side of the secret/variable line a value falls on. Only the
+# deployment token is a credential, and three of the four secrets are identifiers that grant nothing
+# on their own — but they are still reconnaissance, they are still stored as secrets, and a rule that
+# needs a hand-kept exception list is a rule that will eventually be wrong.
+Write-Table 'Secrets' $secrets $true
+Write-Table 'Variables' $variables $false
+
 if (-not $Show -and -not $SetInGitHub) {
     Write-Host ''
-    Write-Host 'Values masked. Re-run with -Show to print them, or -SetInGitHub to write them to the repo.' -ForegroundColor Yellow
+    Write-Host 'Secrets are masked. Re-run with -Show to print them, or -SetInGitHub to write everything' -ForegroundColor Yellow
+    Write-Host 'to the repo without printing the deployment token.' -ForegroundColor Yellow
 }
 
 # ---------------------------------------------------------------- optionally write to GitHub
 if ($SetInGitHub) {
     Write-Host ''
     Write-Host "Writing to $Repo ..." -ForegroundColor Cyan
-    foreach ($name in $secrets.Keys) {
-        $value = $secrets[$name]
-        if (-not $value) {
-            Write-Host ('  {0,-32} skipped (not found)' -f $name) -ForegroundColor Red
-            continue
-        }
 
-        # Piped to stdin rather than passed as an argument, so the value never reaches the process
-        # list or PowerShell's command history.
-        $value | gh secret set $name --repo $Repo
-        Write-Host ('  {0,-32} set' -f $name) -ForegroundColor Green
+    foreach ($entry in @(
+        @{ Table = $secrets;   Verb = 'secret' },
+        @{ Table = $variables; Verb = 'variable' }
+    )) {
+        foreach ($name in $entry.Table.Keys) {
+            $value = $entry.Table[$name]
+            if (-not $value) {
+                Write-Host ('  {0,-32} skipped (not found)' -f $name) -ForegroundColor Red
+                continue
+            }
+
+            # Piped to stdin rather than passed as an argument, so the value never reaches the
+            # process list or PowerShell's command history. Variables do not need that protection,
+            # but there is no reason to write them a second way.
+            $value | gh $entry.Verb set $name --repo $Repo
+            Write-Host ('  {0,-32} set ({1})' -f $name, $entry.Verb) -ForegroundColor Green
+        }
     }
 }

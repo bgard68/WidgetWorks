@@ -218,6 +218,22 @@ select{
 }
 .help{font-size:.8rem;color:var(--ink-3)}
 
+/* Password box with the show/hide toggle sitting inside it. The input reserves room on the right so
+   a long password never slides underneath the button. */
+.pwbox{position:relative;display:flex;min-width:0}
+.pwbox > input{padding-right:42px}
+.pwbox-toggle{
+  position:absolute;top:0;right:0;height:100%;width:38px;
+  display:grid;place-items:center;
+  background:none;border:0;padding:0;cursor:pointer;color:var(--ink-3);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+}
+.pwbox-toggle:hover{color:var(--ink)}
+
+/* Inherits the global :focus-visible ring (line ~144) rather than inventing its own. Inset so the
+   ring is not clipped by the input's own border, since the button sits flush inside it. */
+.pwbox-toggle:focus-visible{box-shadow:var(--ring);border-radius:var(--r-xs)}
+
 /* Password requirements, ticked off as they are met. State is carried by the glyph as well as the
    colour, so the list still reads correctly without colour vision. */
 .pwreqs{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:3px}

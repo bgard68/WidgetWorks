@@ -5,6 +5,7 @@ import { useCart } from '../cart/CartContext'
 import { api } from '../api/client'
 import { GoogleButton } from '../components/GoogleButton'
 import type { CartView } from '../api/types'
+import { PasswordField } from '../components/PasswordField'
 
 export function LoginPage() {
   const { login, completeTwoFactor, loginWithGoogle } = useAuth()
@@ -76,10 +77,12 @@ export function LoginPage() {
                 <span>Email address</span>
                 <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               </label>
-              <label className="field">
-                <span>Password</span>
-                <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-              </label>
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={setPassword}
+                autoComplete="current-password"
+              />
               {error && <p className="alert alert-err">{error}</p>}
               <button className="btn btn-primary btn-block btn-lg" disabled={busy}>
                 {busy ? 'Signing in…' : 'Sign in'}

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { PasswordRequirements } from '../components/PasswordRequirements'
 import { MIN_PASSWORD_LENGTH, meetsPasswordPolicy } from '../lib/passwordPolicy'
+import { PasswordField } from '../components/PasswordField'
 
 export function RegisterPage() {
   const { register, login } = useAuth()
@@ -41,19 +42,16 @@ export function RegisterPage() {
             <span>Email address</span>
             <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              required
-              minLength={MIN_PASSWORD_LENGTH}
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+          <PasswordField
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            minLength={MIN_PASSWORD_LENGTH}
+          >
             {!password && <span className="help">Pick something only you would use.</span>}
             <PasswordRequirements password={password} />
-          </label>
+          </PasswordField>
           {error && <p className="alert alert-err">{error}</p>}
           <button className="btn btn-primary btn-block btn-lg" disabled={busy || !passwordOk}>
             {busy ? 'Creating account…' : 'Create account'}

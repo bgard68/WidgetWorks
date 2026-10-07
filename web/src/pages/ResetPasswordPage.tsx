@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { PasswordRequirements } from '../components/PasswordRequirements'
 import { MIN_PASSWORD_LENGTH, meetsPasswordPolicy } from '../lib/passwordPolicy'
+import { PasswordField } from '../components/PasswordField'
 
 export function ResetPasswordPage() {
   const [params] = useSearchParams()
@@ -42,19 +43,16 @@ export function ResetPasswordPage() {
             <p className="sub">Pick something you haven&apos;t used before.</p>
             {!token && <p className="alert alert-err">This link is missing its reset token. Request a new one.</p>}
             <form onSubmit={submit}>
-              <label className="field">
-                <span>New password</span>
-                <input
-                  type="password"
-                  required
-                  minLength={MIN_PASSWORD_LENGTH}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+              <PasswordField
+                label="New password"
+                value={password}
+                onChange={setPassword}
+                autoComplete="new-password"
+                minLength={MIN_PASSWORD_LENGTH}
+              >
                 {!password && <span className="help">Pick something only you would use.</span>}
                 <PasswordRequirements password={password} />
-              </label>
+              </PasswordField>
               {error && <p className="alert alert-err">{error}</p>}
               <button className="btn btn-primary btn-block btn-lg" disabled={!token || busy || !meetsPasswordPolicy(password)}>
                 {busy ? 'Resetting…' : 'Reset password'}

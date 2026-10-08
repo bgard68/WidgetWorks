@@ -12,6 +12,13 @@ public sealed class InMemoryUserRepository : IUserRepository
 {
     public readonly Dictionary<Guid, User> Store = new();
 
+    /// <summary>
+    /// Counts writes, so a test can assert that a path which had nothing to change issued no write.
+    /// Worth having: the database this runs against bills by the minute it is awake, so a needless
+    /// update on a hot path is a cost rather than merely a redundancy.
+    /// </summary>
+    public int UpdateCount { get; private set; }
+
     public Task<User?> GetByNormalizedEmailAsync(string normalizedEmail, CancellationToken ct)
         => Task.FromResult(Store.Values.FirstOrDefault(u => u.NormalizedEmail == normalizedEmail));
 
@@ -29,6 +36,7 @@ public sealed class InMemoryUserRepository : IUserRepository
 
     public Task UpdateAsync(User user, CancellationToken ct)
     {
+        UpdateCount++;
         Store[user.Id] = user;
         return Task.CompletedTask;
     }

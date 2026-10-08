@@ -139,6 +139,78 @@ public class GoogleLoginTests
     }
 
     [Fact]
+    public async Task A_returning_google_user_without_a_name_gets_one()
+    {
+        // The case the first attempt missed. A returning user is found by google_sub, which skips
+        // both the link and the create branch — so every Google account that existed before names
+        // were captured stayed nameless, and there is no form to fix it on.
+        var users = new InMemoryUserRepository();
+        var existing = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "jane@example.com",
+            NormalizedEmail = "JANE@EXAMPLE.COM",
+            SecurityStamp = Guid.NewGuid(),
+            Role = UserRoles.Customer,
+            GoogleSub = "google-xyz",
+        };
+        users.Store[existing.Id] = existing;
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-xyz", "jane@example.com", true, "Jane Doe") };
+
+        var result = await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Jane Doe", users.Store[existing.Id].DisplayName);
+    }
+
+    [Fact]
+    public async Task A_returning_google_user_keeps_the_name_they_chose()
+    {
+        var users = new InMemoryUserRepository();
+        var existing = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "jane@example.com",
+            NormalizedEmail = "JANE@EXAMPLE.COM",
+            SecurityStamp = Guid.NewGuid(),
+            Role = UserRoles.Customer,
+            GoogleSub = "google-xyz",
+            DisplayName = "Jay",
+        };
+        users.Store[existing.Id] = existing;
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-xyz", "jane@example.com", true, "Jane Elizabeth Doe") };
+
+        await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.Equal("Jay", users.Store[existing.Id].DisplayName);
+    }
+
+    [Fact]
+    public async Task A_returning_google_user_with_no_name_available_is_not_written_to()
+    {
+        // No name on the account and none from Google means there is nothing to do, and this runs
+        // on every Google sign-in — so it must not issue a write just to store null over null.
+        var users = new InMemoryUserRepository();
+        var existing = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "jane@example.com",
+            NormalizedEmail = "JANE@EXAMPLE.COM",
+            SecurityStamp = Guid.NewGuid(),
+            Role = UserRoles.Customer,
+            GoogleSub = "google-xyz",
+        };
+        users.Store[existing.Id] = existing;
+        var validator = new FakeGoogleTokenValidator { Result = new GoogleIdentity("google-xyz", "jane@example.com", true, null) };
+        var before = users.UpdateCount;
+
+        await Handler(validator, users).Handle(new GoogleLoginCommand("id-token"), CancellationToken.None);
+
+        Assert.Null(users.Store[existing.Id].DisplayName);
+        Assert.Equal(before, users.UpdateCount);
+    }
+
+    [Fact]
     public async Task Existing_google_sub_signs_in_same_user()
     {
         var users = new InMemoryUserRepository();

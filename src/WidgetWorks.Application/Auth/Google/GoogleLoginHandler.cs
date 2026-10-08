@@ -90,6 +90,22 @@ public sealed class GoogleLoginHandler(
                 }
             }
         }
+        else if (user.DisplayName is null && DisplayNamePolicy.FromProvider(identity.Name) is { } supplied)
+        {
+            // A Google account that already existed. Both branches above only run the first time we
+            // see someone — a returning user is found by google_sub and skips them entirely — so
+            // without this, every account that signed in with Google before names were captured
+            // would be greeted as "there" forever. There is no form to fix it on either: a
+            // Google-only account has no password section, and the name is not something the
+            // profile page asks for twice.
+            //
+            // Guarded on both the name being absent and the provider actually supplying one, so a
+            // returning sign-in issues no write at all in the ordinary case. That matters more than
+            // it looks: this runs on every Google login, against a database that bills by the
+            // minute it is awake.
+            user.DisplayName = supplied;
+            await users.UpdateAsync(user, ct);
+        }
 
         if (user.IsLockedOut(now))
         {

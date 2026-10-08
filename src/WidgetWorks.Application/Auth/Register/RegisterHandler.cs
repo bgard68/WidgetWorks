@@ -6,7 +6,11 @@ using WidgetWorks.Domain.Users;
 
 namespace WidgetWorks.Application.Auth.Register;
 
-public sealed record RegisterCommand(string Email, string Password);
+/// <summary>
+/// <paramref name="DisplayName"/> is optional and defaults to null, which keeps every existing
+/// caller — and the posted JSON of anyone who does not send it — compiling and working unchanged.
+/// </summary>
+public sealed record RegisterCommand(string Email, string Password, string? DisplayName = null);
 
 public sealed class RegisterHandler(
     IUserRepository users,
@@ -29,6 +33,15 @@ public sealed class RegisterHandler(
             return Result.Fail(PasswordPolicy.Describe(command.Password));
         }
 
+        // Checked before the duplicate-email test, so a name that is too long is reported as the
+        // specific thing it is. After it, the deliberately vague "unable to register" would win and
+        // a fixable mistake would read as a rejected account.
+        var displayName = DisplayNamePolicy.Normalize(command.DisplayName);
+        if (DisplayNamePolicy.IsTooLong(displayName))
+        {
+            return Result.Fail(DisplayNamePolicy.TooLongMessage);
+        }
+
         var normalized = emailAddress.ToUpperInvariant();
         if (await users.GetByNormalizedEmailAsync(normalized, ct) is not null)
         {
@@ -44,6 +57,7 @@ public sealed class RegisterHandler(
             PasswordHash = hasher.Hash(command.Password),
             Role = UserRoles.Customer,
             SecurityStamp = Guid.NewGuid(),
+            DisplayName = displayName,
             CreatedAt = clock.GetUtcNow(),
         };
 

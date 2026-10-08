@@ -82,6 +82,18 @@ provider).
 - **There is no profile page.** The display name lives on Login and security. That is the one thing
   Company A and Company B agree on: neither has a standalone profile destination — one folds the name
   into its security page, the other into account settings.
+- **The name is taken wherever it is already known, and asked for nowhere twice.** Google sign-in
+  reads it from the profile it already validated; registration offers one optional field; the demo
+  accounts are seeded with theirs. Linking Google to an existing account fills a blank name but never
+  replaces one that was set, so using the Google button once cannot rename you. What is deliberately
+  *not* done is deriving a name from the email local part: it yields greetings like "Hello, jsmith91",
+  which is worse than the neutral fallback and is not something any of the three do.
+
+One rule, `DisplayNamePolicy`, covers all three paths — trim, blank means no name, sixty characters —
+with one asymmetry that is the whole point of it being shared. A name someone **typed** that is too
+long is refused and says so. A name **supplied by a provider** is truncated instead, because there is
+no form in front of that person to fix it on and refusing a sign-in over the length of a greeting
+would be absurd.
 
 Login stays one step, deliberately. All three big stores ask for an identifier first and the password
 second, which solves "do I already have an account?" — but it does so by telling the caller whether an

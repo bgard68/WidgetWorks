@@ -62,6 +62,33 @@ public class CatalogAndAuthRepositoryTests(PostgresFixture db)
         return user;
     }
 
+    [Fact]
+    public async Task A_new_users_display_name_survives_the_insert()
+    {
+        // The regression this exists for: display_name was in the select list and in the update,
+        // but missing from the insert. Dapper ignores a property with no matching parameter, so
+        // AddAsync threw nothing, returned nothing, and silently stored null. Every assertion that
+        // went through the in-memory repository passed, because the gap was in the SQL.
+        var email = Unique("it-name-") + "@example.com";
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            NormalizedEmail = email.ToUpperInvariant(),
+            PasswordHash = "hash",
+            Role = UserRoles.Customer,
+            SecurityStamp = Guid.NewGuid(),
+            DisplayName = "Jane Doe",
+            CreatedAt = Now,
+        };
+
+        await Users.AddAsync(user, CancellationToken.None);
+
+        var read = await Users.GetByIdAsync(user.Id, CancellationToken.None);
+        Assert.NotNull(read);
+        Assert.Equal("Jane Doe", read!.DisplayName);
+    }
+
     // ---- widgets -------------------------------------------------------------------------
 
     [Fact]

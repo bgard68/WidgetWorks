@@ -45,6 +45,12 @@ public sealed class GoogleLoginHandler(
             if (user is not null)
             {
                 user.GoogleSub = identity.Subject;
+
+                // Fill the name in only when there is not one already. Linking Google to an account
+                // someone has been using must not overwrite the name they chose with the one on
+                // their Google profile — but an account that never had one has nothing to lose.
+                user.DisplayName ??= DisplayNamePolicy.FromProvider(identity.Name);
+
                 await users.UpdateAsync(user, ct);
                 await audit.WriteAsync(user.Id, "login.google_linked", null, ct);
             }
@@ -58,6 +64,12 @@ public sealed class GoogleLoginHandler(
                     PasswordHash = null,
                     Role = UserRoles.Customer,
                     SecurityStamp = Guid.NewGuid(),
+
+                    // Google already told us who this is, and it is the only path here that learns
+                    // a real name without asking for one. Dropping it meant every account created
+                    // this way was greeted as "there" forever, with no form in sight to fix it.
+                    DisplayName = DisplayNamePolicy.FromProvider(identity.Name),
+
                     GoogleSub = identity.Subject,
                     CreatedAt = now,
                 };

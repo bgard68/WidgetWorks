@@ -47,6 +47,65 @@ public class SeederAndMigrationTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task Seeding_names_all_three_demo_accounts()
+    {
+        var options = Options(Guid.NewGuid().ToString("N")[..8]);
+
+        await Seeder.SeedAsync(options, CancellationToken.None);
+
+        var admin = await Users.GetByNormalizedEmailAsync(options.DemoAdminEmail.ToUpperInvariant(), CancellationToken.None);
+        var manager = await Users.GetByNormalizedEmailAsync(options.DemoManagerEmail.ToUpperInvariant(), CancellationToken.None);
+        var customer = await Users.GetByNormalizedEmailAsync(options.DemoCustomerEmail.ToUpperInvariant(), CancellationToken.None);
+
+        Assert.Equal("Demo Administrator", admin!.DisplayName);
+        Assert.Equal("Demo Manager", manager!.DisplayName);
+        Assert.Equal("Demo Customer", customer!.DisplayName);
+    }
+
+    [Fact]
+    public async Task Seeding_names_demo_accounts_that_already_existed_without_one()
+    {
+        // The case that actually matters. Every database already running has all three rows, and
+        // the insert above is skipped for an account that exists — so without the backfill the
+        // greeting would stay "Hello, there" on exactly the deployments anyone is looking at.
+        var options = Options(Guid.NewGuid().ToString("N")[..8]);
+        await Seeder.SeedAsync(options, CancellationToken.None);
+
+        using (var db1 = await db.Connections.OpenAsync(CancellationToken.None))
+        {
+            await db1.ExecuteAsync(
+                "update users set display_name = null where normalized_email = @Email",
+                new { Email = options.DemoCustomerEmail.ToUpperInvariant() });
+        }
+
+        await Seeder.SeedAsync(options, CancellationToken.None);
+
+        var customer = await Users.GetByNormalizedEmailAsync(options.DemoCustomerEmail.ToUpperInvariant(), CancellationToken.None);
+        Assert.Equal("Demo Customer", customer!.DisplayName);
+    }
+
+    [Fact]
+    public async Task The_backfill_leaves_a_name_someone_chose_alone()
+    {
+        // The other half: filling a blank is help, overwriting a deliberate choice is not. Without
+        // the `display_name is null` guard this would reset the name on every restart.
+        var options = Options(Guid.NewGuid().ToString("N")[..8]);
+        await Seeder.SeedAsync(options, CancellationToken.None);
+
+        using (var db1 = await db.Connections.OpenAsync(CancellationToken.None))
+        {
+            await db1.ExecuteAsync(
+                "update users set display_name = 'Chosen Name' where normalized_email = @Email",
+                new { Email = options.DemoManagerEmail.ToUpperInvariant() });
+        }
+
+        await Seeder.SeedAsync(options, CancellationToken.None);
+
+        var manager = await Users.GetByNormalizedEmailAsync(options.DemoManagerEmail.ToUpperInvariant(), CancellationToken.None);
+        Assert.Equal("Chosen Name", manager!.DisplayName);
+    }
+
+    [Fact]
     public async Task Every_seeded_demo_account_is_protected_not_just_the_administrator()
     {
         var options = Options(Guid.NewGuid().ToString("N")[..8]);

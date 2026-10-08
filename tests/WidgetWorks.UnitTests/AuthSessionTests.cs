@@ -237,6 +237,63 @@ public class AuthSessionTests
     }
 
     [Fact]
+    public async Task Register_stores_the_name_when_one_is_given()
+    {
+        var c = Setup();
+        var result = await Register(c, new FakeEmailSender())
+            .Handle(new RegisterCommand("new@example.com", "Str0ng!Passw0rd", "  Ada Lovelace  "), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var created = c.Users.Store.Values.Single(u => u.NormalizedEmail == "NEW@EXAMPLE.COM");
+        Assert.Equal("Ada Lovelace", created.DisplayName);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Register_without_a_name_leaves_it_unset(string? name)
+    {
+        // The field is optional, so skipping it has to produce null rather than an empty string:
+        // the check constraint rejects blank, and the greeting only falls back on null.
+        var c = Setup();
+        var result = await Register(c, new FakeEmailSender())
+            .Handle(new RegisterCommand("new@example.com", "Str0ng!Passw0rd", name), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(c.Users.Store.Values.Single(u => u.NormalizedEmail == "NEW@EXAMPLE.COM").DisplayName);
+    }
+
+    [Fact]
+    public async Task Register_refuses_a_name_that_is_too_long()
+    {
+        var c = Setup();
+        var result = await Register(c, new FakeEmailSender())
+            .Handle(
+                new RegisterCommand("new@example.com", "Str0ng!Passw0rd", new string('a', DisplayNamePolicy.MaxLength + 1)),
+                CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(DisplayNamePolicy.TooLongMessage, result.Error);
+    }
+
+    [Fact]
+    public async Task A_too_long_name_is_reported_as_itself_even_when_the_email_is_taken()
+    {
+        // Ordering, asserted. The duplicate-email reply is deliberately vague, so if it ran first
+        // a fixable typo in the name would come back as "unable to register" and the person would
+        // have no idea which field to change.
+        var c = Setup();
+        var result = await Register(c, new FakeEmailSender())
+            .Handle(
+                new RegisterCommand(" Jane@Example.com ", "Str0ng!Passw0rd", new string('a', DisplayNamePolicy.MaxLength + 1)),
+                CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(DisplayNamePolicy.TooLongMessage, result.Error);
+    }
+
+    [Fact]
     public async Task Register_does_not_reveal_that_an_email_is_already_taken()
     {
         var c = Setup();

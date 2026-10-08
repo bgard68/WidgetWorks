@@ -10,7 +10,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<LoginResponse>
   completeTwoFactor: (challengeToken: string, code: string) => Promise<void>
   loginWithGoogle: (idToken: string) => Promise<void>
-  register: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string, displayName?: string) => Promise<void>
   logout: () => void
 }
 
@@ -57,8 +57,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       persist(res)
       setRole(res.role ?? null)
     },
-    async register(email, password) {
-      await api('/auth/register', { method: 'POST', body: { email, password } })
+    async register(email, password, displayName) {
+      // Omitted entirely when blank rather than sent as "". The server treats both the same, but a
+      // body that only carries what was filled in is the honest description of what happened.
+      const name = displayName?.trim()
+      await api('/auth/register', {
+        method: 'POST',
+        body: name ? { email, password, displayName: name } : { email, password },
+      })
     },
     logout() {
       clearSession()

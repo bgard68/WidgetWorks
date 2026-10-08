@@ -3,11 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { PasswordRequirements } from '../components/PasswordRequirements'
 import { MIN_PASSWORD_LENGTH, meetsPasswordPolicy } from '../lib/passwordPolicy'
+import { MAX_DISPLAY_NAME_LENGTH } from '../lib/displayName'
 import { PasswordField } from '../components/PasswordField'
 
 export function RegisterPage() {
   const { register, login } = useAuth()
   const navigate = useNavigate()
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -22,7 +24,7 @@ export function RegisterPage() {
     setError(null)
     setBusy(true)
     try {
-      await register(email, password)
+      await register(email, password, name)
       await login(email, password)
       navigate('/store')
     } catch (err) {
@@ -38,6 +40,22 @@ export function RegisterPage() {
         <h1>Create your account</h1>
         <p className="sub">One account for orders, tracking and faster checkout.</p>
         <form onSubmit={submit}>
+          {/* First, and optional. First because a form that opens by asking your name reads as an
+              introduction rather than an interrogation; optional because nothing here needs it —
+              it only decides whether the header greets you by name, and making it required would
+              put a barrier in front of an account for the sake of a greeting. */}
+          <label className="field">
+            <span>
+              Your name <span className="muted">(optional)</span>
+            </span>
+            <input
+              autoComplete="name"
+              maxLength={MAX_DISPLAY_NAME_LENGTH}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Jane Doe"
+            />
+          </label>
           <label className="field">
             <span>Email address</span>
             <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />

@@ -19,6 +19,12 @@ function Probe() {
       <button onClick={() => void auth.completeTwoFactor('challenge-1', '654321')}>2fa</button>
       <button onClick={() => void auth.loginWithGoogle('google-id-token')}>google</button>
       <button onClick={() => void auth.register('new@example.com', 'long-enough-pw')}>register</button>
+      <button onClick={() => void auth.register('new@example.com', 'long-enough-pw', '  Ada Lovelace  ')}>
+        register named
+      </button>
+      <button onClick={() => void auth.register('new@example.com', 'long-enough-pw', '   ')}>
+        register blank name
+      </button>
       <button onClick={auth.logout}>logout</button>
     </>
   )
@@ -93,6 +99,32 @@ describe('AuthContext', () => {
 
     await waitFor(() => expect(calls.some((c) => c.url.includes('/auth/register'))).toBe(true))
     expect(localStorage.getItem(REFRESH_KEY)).toBeNull()
+  })
+
+  it('sends the name, trimmed, when one was given', async () => {
+    const calls = stubFetch([['/auth/register', () => ({})]])
+    const user = userEvent.setup()
+    renderProbe()
+
+    await user.click(screen.getByRole('button', { name: 'register named' }))
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/auth/register'))).toBe(true))
+    const body = JSON.parse(String(calls.find((c) => c.url.includes('/auth/register'))!.init!.body))
+    expect(body.displayName).toBe('Ada Lovelace')
+  })
+
+  it('omits the name entirely when it is blank rather than sending an empty one', async () => {
+    // The server treats a missing key and a blank string identically, so this is about the request
+    // describing what actually happened: nothing was filled in, so nothing is claimed.
+    const calls = stubFetch([['/auth/register', () => ({})]])
+    const user = userEvent.setup()
+    renderProbe()
+
+    await user.click(screen.getByRole('button', { name: 'register blank name' }))
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/auth/register'))).toBe(true))
+    const body = JSON.parse(String(calls.find((c) => c.url.includes('/auth/register'))!.init!.body))
+    expect(body).not.toHaveProperty('displayName')
   })
 
   it('marks Administrator and Manager as staff, and only Administrator as admin', async () => {

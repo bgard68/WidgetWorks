@@ -112,6 +112,15 @@ edit.
   per-user `stamp` claim, signed with a key identified by a `kid` header.
 - **Refresh tokens** — opaque, SHA-256 **hashed at rest**, single-use with **rotation +
   reuse detection** (a reused token revokes the whole family).
+- **One place starts a session.** `ISessionIssuer` mints the access token, mints and stores the
+  refresh token, and returns the pair. Five handlers used to do it themselves in fourteen identical
+  lines — password login, Google login, the 2FA step, recovery-code login, and changing a password.
+  That is not a tidiness concern: issuing a session is the security boundary, so spreading it across
+  five files means every change to it (device binding, a shorter refresh lifetime, recording where a
+  login came from) must be made five times, and missing one produces no compile error — just one
+  sign-in route behaving differently from the rest. Refresh **rotation** deliberately stays in
+  `RefreshHandler`: continuing an existing family carries reuse detection and revokes the token being
+  replaced, which is a decision about an existing session rather than the creation of a new one.
 - **Security stamp** — every token validation checks the token’s `stamp` against the
   user’s current stamp. Rotating the stamp (password reset, “secure my account,” enabling
   2FA) **instantly invalidates all existing access tokens** for that user.

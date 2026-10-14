@@ -219,7 +219,11 @@ Notes:
 - **Access token — JWT**, short‑lived (~10–15 min). Claims: `sub`, `role`, and a **`stamp`** claim = a snapshot of the user's `security_stamp`. Header carries a **`kid`** (key id).
 - **Refresh token — opaque random** (not a JWT), long‑lived. Stored **hashed** server‑side, delivered to the SPA as an **httpOnly, Secure, SameSite** cookie so JS can't read it (mitigates XSS token theft).
 
+**Where a session is created.** One collaborator, `ISessionIssuer`, mints the access token, mints and stores the refresh token, and returns the pair. Every path that finishes authenticating someone goes through it — password login, Google login, the 2FA step, recovery‑code login, and changing a password — and each gets a **fresh `family_id`**, because whatever sessions existed before are unrelated to this one. Keeping it in one place is a security property rather than a style preference: a change to how sessions are issued must land everywhere at once, and five copies make a partial change silent.
+
 ### 6.2 Refresh rotation + reuse detection
+
+Rotation is deliberately **not** part of session creation above: continuing an existing family carries reuse detection and revokes the token being replaced, which is a decision about an existing session rather than the minting of a new one. `RefreshHandler` owns it.
 
 Every refresh **rotates** the token: the old one is revoked and a new one issued in the same `family_id`. If a **revoked** refresh token is ever presented again (classic stolen‑token replay), we revoke the whole family — the thief and the victim both get logged out, which is the safe outcome.
 

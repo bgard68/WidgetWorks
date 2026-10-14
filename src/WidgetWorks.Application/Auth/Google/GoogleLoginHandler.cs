@@ -16,8 +16,7 @@ public sealed record GoogleLoginCommand(string IdToken);
 public sealed class GoogleLoginHandler(
     IGoogleTokenValidator google,
     IUserRepository users,
-    IRefreshTokenRepository refreshTokens,
-    ITokenService tokens,
+    ISessionIssuer sessions,
     IAuditLog audit,
     IEmailSender email,
     TimeProvider clock,
@@ -112,21 +111,9 @@ public sealed class GoogleLoginHandler(
             return Result<AuthResponse>.Fail("Account is temporarily locked. Try again later.");
         }
 
-        var access = tokens.CreateAccessToken(user);
-        var refresh = tokens.CreateRefreshToken(Guid.NewGuid());
-        await refreshTokens.AddAsync(
-            new RefreshToken
-            {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                TokenHash = refresh.Hash,
-                FamilyId = refresh.FamilyId,
-                ExpiresAt = refresh.ExpiresAt,
-                CreatedAt = now,
-            },
-            ct);
+        var response = await sessions.IssueAsync(user, now, ct);
 
         await audit.WriteAsync(user.Id, "login.google_success", null, ct);
-        return Result<AuthResponse>.Success(new AuthResponse(access.Value, access.ExpiresAt, refresh.Value, refresh.ExpiresAt, user.Role));
+        return Result<AuthResponse>.Success(response);
     }
 }

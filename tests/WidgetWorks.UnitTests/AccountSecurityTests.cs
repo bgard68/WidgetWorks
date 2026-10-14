@@ -31,7 +31,7 @@ public class AccountSecurityTests
         users.Store[user.Id] = user;
 
         var options = new AccountSecurityOptions { MaxFailedAttempts = 3, LockoutMinutes = 15 };
-        var handler = new LoginHandler(users, refresh, hasher, new StubTokenService(), new RecordingAuditLog(), options, clock);
+        var handler = new LoginHandler(users, Sessions.Over(refresh), hasher, new StubTokenService(), new RecordingAuditLog(), options, clock);
 
         for (var i = 0; i < 3; i++)
         {

@@ -32,8 +32,8 @@ public sealed record ChangePasswordCommand(Guid UserId, string CurrentPassword, 
 public sealed class ChangePasswordHandler(
     IUserRepository users,
     IRefreshTokenRepository refreshTokens,
+    ISessionIssuer sessions,
     IPasswordHasher hasher,
-    ITokenService tokens,
     IAuditLog audit,
     TimeProvider clock)
 {
@@ -82,22 +82,11 @@ public sealed class ChangePasswordHandler(
         await refreshTokens.RevokeAllForUserAsync(user.Id, now, ct);
         await audit.WriteAsync(user.Id, "password.changed", "all other sessions signed out", ct);
 
-        // A new session for the caller, created after the revoke so it survives it.
-        var access = tokens.CreateAccessToken(user);
-        var refresh = tokens.CreateRefreshToken(Guid.NewGuid());
-        await refreshTokens.AddAsync(
-            new RefreshToken
-            {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                TokenHash = refresh.Hash,
-                FamilyId = refresh.FamilyId,
-                ExpiresAt = refresh.ExpiresAt,
-                CreatedAt = now,
-            },
-            ct);
+        // A new session for the caller, created after the revoke so it survives it. The ordering is
+        // the point and is easy to lose: issue first and the revoke above would kill the token we
+        // just handed back, signing the caller out of the page they are standing on.
+        var response = await sessions.IssueAsync(user, now, ct);
 
-        return Result<AuthResponse>.Success(
-            new AuthResponse(access.Value, access.ExpiresAt, refresh.Value, refresh.ExpiresAt, user.Role));
+        return Result<AuthResponse>.Success(response);
     }
 }

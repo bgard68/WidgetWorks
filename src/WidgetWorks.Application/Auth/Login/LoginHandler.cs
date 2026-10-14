@@ -9,7 +9,7 @@ public sealed record LoginCommand(string Email, string Password);
 
 public sealed class LoginHandler(
     IUserRepository users,
-    IRefreshTokenRepository refreshTokens,
+    ISessionIssuer sessions,
     IPasswordHasher hasher,
     ITokenService tokens,
     IAuditLog audit,
@@ -64,28 +64,9 @@ public sealed class LoginHandler(
             return Result<LoginResult>.Success(new LoginResult(true, challenge, null));
         }
 
-        var response = await IssueTokensAsync(user, now, ct);
+        var response = await sessions.IssueAsync(user, now, ct);
         await audit.WriteAsync(user.Id, "login.success", null, ct);
         return Result<LoginResult>.Success(new LoginResult(false, null, response));
     }
 
-    private async Task<AuthResponse> IssueTokensAsync(User user, DateTimeOffset now, CancellationToken ct)
-    {
-        var access = tokens.CreateAccessToken(user);
-        var refresh = tokens.CreateRefreshToken(Guid.NewGuid());
-
-        await refreshTokens.AddAsync(
-            new RefreshToken
-            {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                TokenHash = refresh.Hash,
-                FamilyId = refresh.FamilyId,
-                ExpiresAt = refresh.ExpiresAt,
-                CreatedAt = now,
-            },
-            ct);
-
-        return new AuthResponse(access.Value, access.ExpiresAt, refresh.Value, refresh.ExpiresAt, user.Role);
-    }
 }

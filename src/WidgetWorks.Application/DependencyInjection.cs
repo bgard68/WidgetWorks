@@ -5,6 +5,8 @@ using WidgetWorks.Application.Auth.Logout;
 using WidgetWorks.Application.Auth.PasswordReset;
 using WidgetWorks.Application.Auth.Refresh;
 using WidgetWorks.Application.Auth.Register;
+using WidgetWorks.Application.Auth.Sessions;
+using WidgetWorks.Application.Abstractions;
 using WidgetWorks.Application.Pricing;
 using WidgetWorks.Application.Carts.AddItem;
 using WidgetWorks.Application.Carts.GetCart;
@@ -46,6 +48,13 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<OrderPricer>();
+
+        // Registered as an interface rather than a concrete type, unlike the handlers below. The
+        // handlers are entry points nothing else substitutes; this is a collaborator five of them
+        // depend on, and the seam is what lets a test assert what a handler *asked for* without
+        // standing up a token service and a database to watch it happen.
+        services.AddScoped<ISessionIssuer, SessionIssuer>();
+
         services.AddScoped<RegisterHandler>();
         services.AddScoped<LoginHandler>();
         services.AddScoped<GoogleLoginHandler>();

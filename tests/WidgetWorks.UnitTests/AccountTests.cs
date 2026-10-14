@@ -47,7 +47,7 @@ public class AccountTests
     }
 
     private static ChangePasswordHandler Handler(Ctx c)
-        => new(c.Users, c.RefreshTokens, new FakePasswordHasher(), new StubTokenService(), c.Audit, new FakeTimeProvider(Now));
+        => new(c.Users, c.RefreshTokens, Sessions.Over(c.RefreshTokens), new FakePasswordHasher(), c.Audit, new FakeTimeProvider(Now));
 
     [Fact]
     public async Task Changing_a_password_signs_every_other_session_out_but_not_this_one()

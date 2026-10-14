@@ -32,7 +32,7 @@ public class TwoFactorLoginTests
 
         var handler = new LoginHandler(
             users,
-            new InMemoryRefreshTokenRepository(),
+            Sessions.Over(new InMemoryRefreshTokenRepository()),
             hasher,
             new StubTokenService(),
             new RecordingAuditLog(),
@@ -69,7 +69,7 @@ public class TwoFactorLoginTests
         twoFactor.Secrets[user.Id] = new TwoFactorSecret { UserId = user.Id, Secret = "SECRET", IsConfirmed = true };
 
         var challenge = stubTokens.CreateChallengeToken(user);
-        var handler = new TwoFactorLoginHandler(users, refresh, twoFactor, totp, stubTokens, new RecordingAuditLog(), clock);
+        var handler = new TwoFactorLoginHandler(users, Sessions.Over(refresh, stubTokens), twoFactor, totp, stubTokens, new RecordingAuditLog(), clock);
 
         var ok = await handler.Handle(new TwoFactorLoginCommand(challenge, "654321"), CancellationToken.None);
         Assert.True(ok.IsSuccess);
@@ -83,7 +83,7 @@ public class TwoFactorLoginTests
     public async Task An_unparseable_challenge_is_refused()
     {
         var handler = new TwoFactorLoginHandler(
-            new InMemoryUserRepository(), new InMemoryRefreshTokenRepository(), new InMemoryTwoFactorRepository(),
+            new InMemoryUserRepository(), Sessions.Over(new InMemoryRefreshTokenRepository()), new InMemoryTwoFactorRepository(),
             new FakeTotpService(), new StubTokenService(), new RecordingAuditLog(), new FakeTimeProvider(Start));
 
         var result = await handler.Handle(new TwoFactorLoginCommand("garbage", "654321"), CancellationToken.None);
@@ -100,7 +100,7 @@ public class TwoFactorLoginTests
         var plain = new User { Id = Guid.NewGuid(), Email = "a@b.com", NormalizedEmail = "A@B.COM", SecurityStamp = Guid.NewGuid(), TwoFactorEnabled = false };
         users.Store[plain.Id] = plain;
         var handler = new TwoFactorLoginHandler(
-            users, new InMemoryRefreshTokenRepository(), new InMemoryTwoFactorRepository(),
+            users, Sessions.Over(new InMemoryRefreshTokenRepository(), stubTokens), new InMemoryTwoFactorRepository(),
             new FakeTotpService(), stubTokens, new RecordingAuditLog(), new FakeTimeProvider(Start));
 
         var gone = await handler.Handle(

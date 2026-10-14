@@ -10,7 +10,7 @@ public sealed record TwoFactorLoginCommand(string ChallengeToken, string Code);
 
 public sealed class TwoFactorLoginHandler(
     IUserRepository users,
-    IRefreshTokenRepository refreshTokens,
+    ISessionIssuer sessions,
     ITwoFactorRepository twoFactor,
     ITotpService totp,
     ITokenService tokens,
@@ -39,28 +39,8 @@ public sealed class TwoFactorLoginHandler(
             return Result<AuthResponse>.Fail("Invalid authenticator code.");
         }
 
-        var response = await IssueTokensAsync(user, now, ct);
+        var response = await sessions.IssueAsync(user, now, ct);
         await audit.WriteAsync(user.Id, "2fa.success", null, ct);
         return Result<AuthResponse>.Success(response);
-    }
-
-    private async Task<AuthResponse> IssueTokensAsync(User user, DateTimeOffset now, CancellationToken ct)
-    {
-        var access = tokens.CreateAccessToken(user);
-        var refresh = tokens.CreateRefreshToken(Guid.NewGuid());
-
-        await refreshTokens.AddAsync(
-            new RefreshToken
-            {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                TokenHash = refresh.Hash,
-                FamilyId = refresh.FamilyId,
-                ExpiresAt = refresh.ExpiresAt,
-                CreatedAt = now,
-            },
-            ct);
-
-        return new AuthResponse(access.Value, access.ExpiresAt, refresh.Value, refresh.ExpiresAt, user.Role);
     }
 }

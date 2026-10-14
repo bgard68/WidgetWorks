@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using WidgetWorks.Application.Abstractions;
+using WidgetWorks.Application.Auth.Sessions;
 using WidgetWorks.Domain.Auth;
 using WidgetWorks.Domain.Carts;
 using WidgetWorks.Domain.Catalog;
@@ -7,6 +8,20 @@ using WidgetWorks.Domain.Orders;
 using WidgetWorks.Domain.Users;
 
 namespace WidgetWorks.UnitTests.Fakes;
+
+/// <summary>
+/// Builds a real <see cref="SessionIssuer"/> over the fakes.
+///
+/// The real one rather than a stub, because the assertions that matter here are about the refresh
+/// token actually reaching the repository — substituting the issuer would delete the behaviour the
+/// tests were written to check. What the extraction removed from these tests is the *repetition* of
+/// wiring it, not the wiring itself.
+/// </summary>
+public static class Sessions
+{
+    public static ISessionIssuer Over(IRefreshTokenRepository refresh, ITokenService? tokens = null)
+        => new SessionIssuer(tokens ?? new StubTokenService(), refresh);
+}
 
 public sealed class InMemoryUserRepository : IUserRepository
 {

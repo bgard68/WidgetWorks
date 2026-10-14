@@ -14,7 +14,7 @@ public class GoogleLoginTests
     private static FakeTimeProvider Clock() => new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
     private static GoogleLoginHandler Handler(FakeGoogleTokenValidator validator, InMemoryUserRepository users, IEmailSender? email = null, ILogger<GoogleLoginHandler>? logger = null)
-        => new(validator, users, new InMemoryRefreshTokenRepository(), new StubTokenService(), new RecordingAuditLog(), email ?? new FakeEmailSender(), Clock(), logger ?? NullLogger<GoogleLoginHandler>.Instance);
+        => new(validator, users, Sessions.Over(new InMemoryRefreshTokenRepository()), new RecordingAuditLog(), email ?? new FakeEmailSender(), Clock(), logger ?? NullLogger<GoogleLoginHandler>.Instance);
 
     [Fact]
     public async Task New_google_user_is_provisioned_and_tokens_issued()

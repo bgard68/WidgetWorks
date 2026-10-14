@@ -10,7 +10,7 @@ public sealed record RecoveryLoginCommand(string ChallengeToken, string Recovery
 
 public sealed class RecoveryLoginHandler(
     IUserRepository users,
-    IRefreshTokenRepository refreshTokens,
+    ISessionIssuer sessions,
     ITwoFactorRepository twoFactor,
     IRecoveryCodes recovery,
     ITokenService tokens,
@@ -40,22 +40,9 @@ public sealed class RecoveryLoginHandler(
             return Result<AuthResponse>.Fail("Invalid recovery code.");
         }
 
-        var access = tokens.CreateAccessToken(user);
-        var refresh = tokens.CreateRefreshToken(Guid.NewGuid());
-        await refreshTokens.AddAsync(
-            new RefreshToken
-            {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                TokenHash = refresh.Hash,
-                FamilyId = refresh.FamilyId,
-                ExpiresAt = refresh.ExpiresAt,
-                CreatedAt = now,
-            },
-            ct);
+        var response = await sessions.IssueAsync(user, now, ct);
 
         await audit.WriteAsync(user.Id, "2fa.recovery_success", null, ct);
-        return Result<AuthResponse>.Success(new AuthResponse(
-            access.Value, access.ExpiresAt, refresh.Value, refresh.ExpiresAt, user.Role));
+        return Result<AuthResponse>.Success(response);
     }
 }

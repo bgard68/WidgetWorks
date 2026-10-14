@@ -55,7 +55,7 @@ public class TwoFactorManagementTests
         => new(c.Users, c.TwoFactor, c.Audit);
 
     private static RecoveryLoginHandler RecoveryLogin(Ctx c)
-        => new(c.Users, c.Refresh, c.TwoFactor, c.Recovery, c.Tokens, c.Audit, c.Clock);
+        => new(c.Users, Sessions.Over(c.Refresh, c.Tokens), c.TwoFactor, c.Recovery, c.Tokens, c.Audit, c.Clock);
 
     // ---- confirm enrollment --------------------------------------------------------------
 

@@ -45,5 +45,9 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Unit tests (Vitest)
         run: npm test
+      # Three error rules over src/: no import cycles, production code never imports test
+      # files or helpers, and every import resolves. Rules live in web/.dependency-cruiser.cjs.
+      - name: Import rules (dependency-cruiser)
+        run: npm run depcruise
       - name: Build (type-check + bundle)
         run: npm run build

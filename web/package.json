@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "depcruise": "depcruise src",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -25,6 +26,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.0.5",
     "@vitest/coverage-v8": "^4.1.12",
+    "dependency-cruiser": "^18.7.0",
     "jsdom": "^30.0.1",
     "typescript": "^5.6.2",
     "vite": "^8.3.5",

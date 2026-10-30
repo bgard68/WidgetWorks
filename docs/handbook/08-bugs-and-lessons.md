@@ -19,7 +19,8 @@ Entry 46 came later still, from re-reading code that had already shipped: a defe
 in place by a passing test that stated the misconception out loud. Entry 47 is not code
 at all — a configuration file silently rejected for three weeks, during which every fix
 written into it did nothing. Entry 48 came from comparing a running storefront against the
-code that seeded it.
+code that seeded it. Entry 51 is entry 47's sibling — the same configuration file,
+failing a second way, and again found by its output rather than by being read.
 
 ## Bugs
 
@@ -531,6 +532,19 @@ the column worth reading.
 **Guarded by** `ColumnCoverageTests`, which is the part worth copying. It does not list columns. It reflects over the entity's writable properties, fills each with a value chosen to differ from the column's default, round-trips through the real repository and compares them all — so adding a property and a column tomorrow fails the build until the SQL carries it, with no list for anyone to forget. The only list is the short, commented set of properties a create deliberately does not write (`ArchivedAt`, `TrackingNumber`, and the three an order acquires later). Both failure modes were confirmed against it by reintroducing them: dropping `display_name` from the insert and `quantity_reserved` from a read list each turn it red
 
 **Lesson** This is the second time a Dapper insert has quietly dropped a column — `is_protected` went the same way. The first fix was a hand-written round-trip test for widgets alone, which is why there was a second time: its assertions were a fourth copy of the same column list, so it could only ever catch the column someone had already thought of, and it carried a name promising otherwise. A guard that enumerates has to enumerate *from the code*, not from the author's memory. The shape of the bug is worth naming: a missing *column* in a `select` throws, and a missing *parameter* in an insert does nothing at all, so the two failure modes are nothing alike despite looking symmetrical in the source. Any repository holding separate column lists for read, insert and update has three chances to disagree with itself and only reports one of them. The test that catches it has to round-trip through the real database — every in-memory assertion passed throughout, because the gap was in the SQL and the fake had no SQL to be wrong
+
+
+### 51 · Dependabot was pointed at a directory that no longer existed, and still looked alive
+
+**Found by** a sweep of failing workflow runs across every repository, not by anything in this one. The weekly `Dependabot Updates` run for `npm_and_yarn in /src/WidgetWorks.Web` had been failing since the SPA moved, and nothing watches a run that only Dependabot schedules
+
+**Cause** `.github/dependabot.yml` declared the npm block against `/src/WidgetWorks.Web`. The SPA is in `/web`. A directory that is not there is not a validation error — the file parses, GitHub's `.github/dependabot.yml` check passes, and the failure only happens later, inside the weekly run for that one block. So no version update was ever proposed for the SPA and both groups under it, `npm-production` and `npm-development`, had never once run. What made it survive scrutiny is that npm pull requests *kept arriving*: a security update is resolved from the dependency graph rather than from the configured directory, so `undici` and `@vitest/mocker` came through on a path that does not exist. The block looked two-thirds working
+
+**Fix** One line — `/src/WidgetWorks.Web` becomes `/web`
+
+**Guarded by** `scripts/check-dependabot-config.py`, extended to assert that every configured directory exists in the checkout. It reads `directory` and `directories`, and treats a glob matching nothing as dead, because a pattern that resolves to no manifest is exactly as inert as a literal path that is gone. The addition is deliberately the opposite shape to the check already in that file: the group comparison needs Dependabot's output and honestly reports `INCONCLUSIVE` when there is none, while this one reads the repository and is conclusive on the first run. It also fails independently, so a missing directory is still reported in a week when the group check has nothing to say. Both failure modes were confirmed by reintroducing them — the real path and an `/apps/*` glob each turn it red and name the offending entry
+
+**Lesson** Entry 47 was this file failing loudly-but-invisibly: rejected outright, falling back to an older version, reporting nothing. This is the same file failing *partially*, which is worse, because partial output reads as proof of life. The lesson there was that the only evidence a config is live is the behaviour it produces; the correction this entry adds is that the behaviour has to be attributed before it counts as evidence. Security updates and version updates arrive looking identical and are resolved by different mechanisms, so one of them kept answering for a block that was dead. A check that asks "is this configuration doing anything?" gets a yes here. The question that finds it is "is every part of this configuration pointed at something that exists?" — and that one needs no output at all, which is why it should have been the cheaper check written first
 
 
 ## Lessons learned

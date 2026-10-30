@@ -138,6 +138,11 @@ jobs:
       # Thresholds live in vitest.config.ts, so this fails the job if coverage regresses.
       - name: Test with coverage
         run: npm run test:coverage
+      # The same three import rules Web CI enforces (web/.dependency-cruiser.cjs): no cycles,
+      # no production import of test code, no unresolvable import. Here so a deploy cannot
+      # ship an import graph the pull-request gate would have refused.
+      - name: Import rules (dependency-cruiser)
+        run: npm run depcruise
       - name: Build (type-check + bundle)
         run: npm run build
 

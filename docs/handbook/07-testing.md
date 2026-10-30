@@ -6,7 +6,7 @@ Five layers, and all five are the gate — no deployment runs unless every one p
 
 | Layer | What it proves | Needs |
 |---|---|---|
-| **Backend unit** (xUnit) | handler and domain logic | nothing |
+| **Backend unit** (xUnit) | handler and domain logic, plus the onion's dependency arrows (NetArchTest) | nothing |
 | **Repository integration** (xUnit) | the SQL: reservations, constraints, cascades | PostgreSQL |
 | **API** (xUnit + `WebApplicationFactory`) | the HTTP surface in process: routing, binding, JWT pipeline, authorization, throttling, health | PostgreSQL |
 | **Frontend unit** (Vitest + Testing Library) | components render and behave | jsdom |
@@ -68,6 +68,11 @@ they’re deterministic and need no database. Coverage includes:
   on an answer Stripe actually gave, and a probe that searches rather than creating.
 - Payments — async settlement (webhook → Paid / PaymentFailed, idempotent, unknown ref).
 - Orders — lifecycle transitions (Paid→Shipped→Delivered / Cancelled).
+- Architecture — `ArchitectureTests.cs` (NetArchTest) pins the onion's arrows against the
+  compiled assemblies: Domain references no other layer and nothing beyond the BCL,
+  Application reaches only inward and stays behind its ports, Infrastructure never touches
+  the web host — and a failure names the types that crossed. WebApi is deliberately not
+  scanned: it is the composition root, so referencing every layer is its job.
 
 Run them:
 
@@ -115,6 +120,10 @@ cd web && npm run test:coverage
 ```
 
 `npm run build` (tsc + Vite) runs alongside them in CI, so a type error fails the same gate.
+So do the import rules: `npm run depcruise` (config in `web/.dependency-cruiser.cjs`) holds
+three error-level rules over `src/` — no import cycles, production code never imports test
+files or helpers, and every import must resolve. Web CI runs it between the tests and the
+build, and the deployment gate runs the same script, so a violation blocks both.
 
 > **jsdom does not implement `<dialog>`.** `showModal`/`close` are absent, so any component
 > built on the native modal throws on mount. `src/test/setup.ts` supplies minimal versions.
@@ -254,7 +263,7 @@ Sample:
 | **Secret scan** | every push/PR (incl. docs) | gitleaks — never skipped |
 | **CI** | code changes (docs/scripts ignored) | format check, `dotnet build -warnaserror`, `dotnet test` (all three .NET suites, against a PostgreSQL service) + the 95% coverage floor; dependency review (public) |
 | **CodeQL** | code changes (public) | security-extended analysis |
-| **Web CI** | `web/**` changes | `npm run build` (tsc + Vite) |
+| **Web CI** | `web/**` changes | `npm test` (Vitest), `npm run depcruise` (import rules), `npm run build` (tsc + Vite) |
 | **Smoke test** | code changes (docs ignored) | `docker compose up db api` → wait `/health` → run `smoke-test.ps1` |
 | **Test suite** | called by both deploys | all five layers plus the coverage floor — see below |
 | **Deploy API** | `main`, only for `src/**`, `tests/**`, `Dockerfile.api`, build files | `needs: tests` → publish Release → zip-deploy to App Service |
@@ -263,6 +272,9 @@ Sample:
 **Docs-only changes** (`**.md`, `docs/**`) skip CI / CodeQL / Web CI / Smoke — only the
 secret scan runs — so writing documentation never triggers a build **or a deployment**. The
 smoke workflow can also be run on demand from the Actions tab (`workflow_dispatch`).
+
+Branch protection on `main` requires three checks before a merge: **Secret scan (gitleaks)**,
+**Build & test (.NET)** and **Build web (Vite)** — the job names, not the workflow names.
 
 ### The deployment gate
 
@@ -273,7 +285,7 @@ smoke workflow can also be run on demand from the Actions tab (`workflow_dispatc
 | `backend` | unit tests + coverage report |
 | `integration` | repository tests, then the API tests, against a PostgreSQL **service container** |
 | `coverage` | `needs: [backend, integration]` — merges the unit and integration/API reports, enforces the **95%** floor |
-| `frontend` | Vitest with thresholds, then `tsc` + Vite build |
+| `frontend` | Vitest with thresholds, then the import rules (dependency-cruiser), then `tsc` + Vite build |
 | `smoke` | compose up, wait for `/health`, run `smoke-test.ps1` |
 
 The floor is a separate job because **neither suite reaches it alone**: the repositories are

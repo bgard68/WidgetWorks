@@ -22,7 +22,9 @@ const cube = (top: string, left: string, right: string) => (
   </>
 )
 
-const ICONS: Record<string, JSX.Element> = {
+// React.JSX, not a bare JSX: @types/react 19 stopped declaring the global JSX
+// namespace, so the unqualified name no longer resolves.
+const ICONS: Record<string, React.JSX.Element> = {
   standard: (
     <svg {...VIEW}>
       <defs>

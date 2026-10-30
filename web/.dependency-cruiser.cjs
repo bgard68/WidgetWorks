@@ -1,5 +1,7 @@
-// Import-graph rules for src/, run by `npm run depcruise` (and Web CI right after the tests).
-// Three rules, all errors — a warning in CI is a rule nobody has to follow.
+// Import-graph rules for src/, run by `npm run depcruise` — in Web CI right after the tests,
+// and in the deploy gate (test-suite.yml), so a violation blocks the PR and the deploy alike.
+// Three rules, all errors — a warning in CI is a rule nobody has to follow. The handbook's
+// testing chapter (docs/handbook/07-testing.md) describes them alongside the other gates.
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
   forbidden: [

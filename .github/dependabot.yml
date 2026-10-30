@@ -42,8 +42,15 @@ updates:
         update-types: ["version-update:semver-major"]
 
   # ---- React / npm (SPA) ----
+  # The SPA lives in /web. This said /src/WidgetWorks.Web, a path that has not
+  # existed since the frontend moved, so every weekly npm run failed and no
+  # version update was ever proposed for it -- the groups below included.
+  # Security updates still arrived, because Dependabot finds those through the
+  # dependency graph rather than this directory, which is why the block looked
+  # half-alive rather than dead. check-dependabot-config.py now asserts that
+  # every configured directory exists.
   - package-ecosystem: "npm"
-    directory: "/src/WidgetWorks.Web"
+    directory: "/web"
     schedule:
       interval: "weekly"
       day: "monday"

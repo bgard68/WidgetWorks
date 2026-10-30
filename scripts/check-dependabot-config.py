@@ -21,9 +21,21 @@ weeks earlier. This script checks exactly that, and deliberately tests the
 outcome rather than the mechanism -- it does not care *why* the config is not
 being applied, only that Dependabot's behaviour disagrees with the file.
 
-Exit codes: 0 pass or inconclusive, 1 drift detected.
+A second failure, found 2026-10-29, is checked the same way and for the same
+reason. The npm block pointed at /src/WidgetWorks.Web, which had not existed
+since the SPA moved to /web. That block's weekly run failed every Monday and
+proposed nothing, so its groups were inert -- yet security updates kept
+arriving, because Dependabot finds those through the dependency graph rather
+than the configured directory. The block therefore looked half-alive, and the
+only visible symptom was a red run nobody was reading.
+
+That check reads the checkout rather than Dependabot's output, so unlike the
+group comparison it is conclusive immediately and never reports inconclusive.
+
+Exit codes: 0 pass or inconclusive, 1 drift or a missing directory detected.
 """
 
+import glob
 import json
 import os
 import re
@@ -94,6 +106,51 @@ def api(path):
         sys.exit(f"GitHub API {error.code} for {path}: {error.read()[:200]!r}")
 
 
+def configured_directories(config):
+    """Every directory an update block points at, as (ecosystem, path) pairs.
+
+    Dependabot accepts a single `directory` or a `directories` list, and the
+    list form may contain globs. Both are normalised here to repository-relative
+    paths so they can be checked against the checkout.
+    """
+    pairs = []
+    for update in config.get("updates") or []:
+        ecosystem = update.get("package-ecosystem")
+        entries = update.get("directories") or []
+        if update.get("directory"):
+            entries = [*entries, update["directory"]]
+        for entry in entries:
+            pairs.append((ecosystem, str(entry)))
+    return pairs
+
+
+def missing_directories(config):
+    """Configured directories that do not exist in the checkout.
+
+    A directory that is not there is the quietest failure Dependabot has. The
+    weekly run for that block errors, no version update is ever proposed, and
+    the only thing that still arrives is security updates -- which come from
+    the dependency graph, not from this path -- so the block looks half-alive
+    instead of dead. WidgetWorks pointed npm at /src/WidgetWorks.Web long after
+    the SPA moved to /web and nothing said so.
+
+    Globs in `directories` are honoured: a pattern matching nothing is as dead
+    as a literal path that does not exist.
+    """
+    missing = []
+    for ecosystem, path in configured_directories(config):
+        relative = path.lstrip("/")
+        # A bare "/" is the repository root, which always exists.
+        if not relative:
+            continue
+        if any(character in relative for character in "*?["):
+            if not glob.glob(relative):
+                missing.append((ecosystem, path, "matches nothing"))
+        elif not os.path.isdir(relative):
+            missing.append((ecosystem, path, "does not exist"))
+    return missing
+
+
 def declared_groups(config):
     """Every group name the config declares, across all ecosystems."""
     names = set()
@@ -143,17 +200,44 @@ def main():
     with open(CONFIG_PATH, encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
 
+    # Checked first, and separately, because it is the one part of this script
+    # that is conclusive on its own: it reads the checkout rather than
+    # Dependabot's output, so it needs no weekly run to have happened and can
+    # never come back "inconclusive".
+    missing = missing_directories(config)
+    if missing:
+        print("MISSING DIRECTORIES: Dependabot is configured to scan paths "
+              "that are not in this repository.")
+        print()
+        for ecosystem, path, reason in missing:
+            print(f"  {ecosystem}: '{path}' {reason}")
+        print()
+        print("That block's weekly run fails and proposes nothing, so no "
+              "version update -- and no group declared under it -- has any")
+        print("effect. Security updates still arrive, because those come from "
+              "the dependency graph rather than this path, which is what makes")
+        print("the block look half-alive instead of dead.")
+        print()
+        print("Point each entry at the directory holding the manifest, or "
+              "remove the block if the code is gone.")
+
+    # A missing directory is a failure on its own, whatever the group check
+    # goes on to conclude -- including when it concludes nothing.
+    failed = 1 if missing else 0
+    if missing:
+        print()
+
     groups = declared_groups(config)
     if not groups:
         # Without groups there is no name to compare against, so this check has
         # nothing to say. It is not a failure -- grouping is optional.
         print("Config declares no groups; drift cannot be detected this way.")
-        return 0
+        return failed
 
     commits = api(f"/repos/{repository}/commits?path={CONFIG_PATH}&per_page=1")
     if not commits:
         print(f"No commit history for {CONFIG_PATH}; skipping.")
-        return 0
+        return failed
     changed_at = datetime.fromisoformat(
         commits[0]["commit"]["committer"]["date"].replace("Z", "+00:00")
     )
@@ -204,7 +288,7 @@ def main():
         print("INCONCLUSIVE: Dependabot has opened nothing since the config "
               "changed, so there is no output to compare against. This check "
               "proves nothing yet; it will have evidence after the next run.")
-        return 0
+        return failed
 
     if ungrouped:
         print()
@@ -218,7 +302,7 @@ def main():
     if not drifted:
         print()
         print("OK: every group Dependabot named is declared in the config.")
-        return 0
+        return failed
 
     print()
     print("DRIFT: Dependabot is opening pull requests for groups this config "

@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: deploy-web
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   # The same gate the API deploy uses. The SPA is useless against a broken API, so the

@@ -47,7 +47,15 @@ jobs:
         run: npm test
       # Three error rules over src/: no import cycles, production code never imports test
       # files or helpers, and every import resolves. Rules live in web/.dependency-cruiser.cjs.
+      #
+      # The module count is asserted, not just the exit code. dependency-cruiser reports
+      # "no dependency violations found (0 modules, 0 dependencies cruised)" and exits 0
+      # when it cannot parse the sources at all — which is what a TypeScript major does to
+      # it — so a green step is not by itself evidence that anything was examined.
       - name: Import rules (dependency-cruiser)
-        run: npm run depcruise
+        run: |
+          npm run depcruise 2>&1 | tee "$RUNNER_TEMP/depcruise.out"
+          test "${PIPESTATUS[0]}" -eq 0
+          grep -qE '\([1-9][0-9]* modules' "$RUNNER_TEMP/depcruise.out"
       - name: Build (type-check + bundle)
         run: npm run build

@@ -42,6 +42,12 @@ module.exports = {
     // cruise what is inside them — their internals are npm's problem, not this graph's.
     doNotFollow: { path: ['node_modules'] },
     tsConfig: { fileName: 'tsconfig.json' },
+    // swc, because the typescript parser cannot be: dependency-cruiser supports
+    // typescript <7, and this project is moving to 7. With no usable parser it
+    // finds 0 modules and still exits 0 — a gate that passes by seeing nothing,
+    // which is worse than no gate because it reports success. The module-count
+    // assertion in the web-ci step is the second half of this guard.
+    parser: 'swc',
     // react-router-dom and friends publish ESM behind `exports` maps; without these fields the
     // resolver reports them unresolvable and rule three fires on every bare import.
     enhancedResolveOptions: {

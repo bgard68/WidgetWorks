@@ -61,6 +61,24 @@ updates:
       prefix: "chore(deps)"
       prefix-development: "chore(dev-deps)"
     groups:
+      # Groups are matched in order, so these two families come before the
+      # production/development split below -- the same reasoning the
+      # github-actions block already records for codeql-action.
+      #
+      # Both families version-lock across packages, so a split pull request
+      # cannot install: @vitest/coverage-v8 declares an exact `peer vitest`,
+      # and @types/react-dom requires the matching major of @types/react.
+      # Dependabot proposed each half separately on 2026-10-30 (#23, #25, #26,
+      # #27) and all four failed `npm install` on a constraint the other half
+      # would have satisfied. Neither group restricts update-types, because the
+      # split that broke here was a major on both sides -- a group that stops
+      # at minor and patch would have let exactly this case through again.
+      vitest:
+        applies-to: version-updates
+        patterns: ["vitest", "@vitest/*"]
+      react:
+        applies-to: version-updates
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       npm-production:
         applies-to: version-updates
         dependency-type: production

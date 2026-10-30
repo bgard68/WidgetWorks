@@ -21,6 +21,8 @@ at all — a configuration file silently rejected for three weeks, during which 
 written into it did nothing. Entry 48 came from comparing a running storefront against the
 code that seeded it. Entry 51 is entry 47's sibling — the same configuration file,
 failing a second way, and again found by its output rather than by being read.
+Entry 52 completes that set: a gate that reported success while reading none of
+the code it was pointed at.
 
 ## Bugs
 
@@ -545,6 +547,19 @@ the column worth reading.
 **Guarded by** `scripts/check-dependabot-config.py`, extended to assert that every configured directory exists in the checkout. It reads `directory` and `directories`, and treats a glob matching nothing as dead, because a pattern that resolves to no manifest is exactly as inert as a literal path that is gone. The addition is deliberately the opposite shape to the check already in that file: the group comparison needs Dependabot's output and honestly reports `INCONCLUSIVE` when there is none, while this one reads the repository and is conclusive on the first run. It also fails independently, so a missing directory is still reported in a week when the group check has nothing to say. Both failure modes were confirmed by reintroducing them — the real path and an `/apps/*` glob each turn it red and name the offending entry
 
 **Lesson** Entry 47 was this file failing loudly-but-invisibly: rejected outright, falling back to an older version, reporting nothing. This is the same file failing *partially*, which is worse, because partial output reads as proof of life. The lesson there was that the only evidence a config is live is the behaviour it produces; the correction this entry adds is that the behaviour has to be attributed before it counts as evidence. Security updates and version updates arrive looking identical and are resolved by different mechanisms, so one of them kept answering for a block that was dead. A check that asks "is this configuration doing anything?" gets a yes here. The question that finds it is "is every part of this configuration pointed at something that exists?" — and that one needs no output at all, which is why it should have been the cheaper check written first
+
+
+### 52 · The import-rules gate reported success while reading nothing
+
+**Found by** checking whether the pending TypeScript 7 bump was safe to merge. Every check on it was green, including the dependency-cruiser step added the same night. The step's own output was `no dependency violations found (0 modules, 0 dependencies cruised)` — a tick, an exit code of zero, and a module count of nothing
+
+**Cause** dependency-cruiser supports `typescript <7`. Handed a TypeScript 7 project it parses nothing, so it finds no modules, so it finds no violations, so it exits 0. Every observable signal a gate is normally judged by — green check, zero exit, "no violations" — is produced by a tool that read none of the code. The three rules underneath were correct and would have kept working; they were simply never asked about anything. This is worse than having no gate, because the absent gate does not claim the code was examined
+
+**Fix** `parser: 'swc'` in `web/.dependency-cruiser.cjs`, with `@swc/core` as a devDependency. swc reads the sources across the TypeScript major, and the graph comes back to its real size: 79 modules, 302 dependencies, the same three rules, no violations
+
+**Guarded by** the step asserting the module count, not just the exit status: it pipes the output through `tee` and then requires `\([1-9][0-9]* modules`. A parser that stops working now fails the build instead of congratulating itself. The proof is the same pull request measured twice — 0 modules before the guard, 79 after, with nothing else changed. Both directions of the assertion were canary-checked against a real and a fabricated output line
+
+**Lesson** This repository already knows that a passing check can mean nothing — entry 47 was a config silently not applied, entry 51 a Dependabot block scanning a path that did not exist. The pattern underneath all three is that **a tool reports on the work it did, not on the work it was supposed to do**, and the two are indistinguishable from the outside unless something asserts the size of the work. A test suite has this built in: zero tests collected is loud, because the count is part of the output everyone reads. Static analysers mostly do not, and a linter, a type checker or a graph tool that silently narrows its input to nothing will keep reporting clean forever. The cheap general defence is to assert the denominator — files scanned, modules cruised, rules evaluated — and it is worth adding at the moment the gate is written, because the day it quietly stops reading the code is the day nobody is looking at its output
 
 
 ## Lessons learned

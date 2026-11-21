@@ -6,7 +6,6 @@ on:
     paths: ['web/**', '.github/workflows/web-ci.yml']
   pull_request:
     branches: [main]
-    paths: ['web/**', '.github/workflows/web-ci.yml']
 
   # On demand, and this one needs it most: the paths filter means a change outside web/ never
   # runs it, so it can sit unexercised for long stretches with nothing reporting that. No paths
@@ -37,13 +36,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           # No later step pushes with the job token; keep it out of .git/config.
           persist-credentials: false
+      - name: Check whether web build is needed
+        id: web-changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ] || ! git -C "$GITHUB_WORKSPACE" diff --quiet "$BASE_SHA...HEAD" -- web .github/workflows/web-ci.yml; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No web changes; reporting the required check without running the web build."
+          fi
       - name: Node version (preinstalled on the runner)
+        if: steps.web-changes.outputs.run == 'true'
         run: node --version && npm --version
       - name: Install
+        if: steps.web-changes.outputs.run == 'true'
         run: npm install --no-audit --no-fund
       - name: Unit tests (Vitest)
+        if: steps.web-changes.outputs.run == 'true'
         run: npm test
       # Three error rules over src/: no import cycles, production code never imports test
       # files or helpers, and every import resolves. Rules live in web/.dependency-cruiser.cjs.
@@ -53,9 +68,11 @@ jobs:
       # when it cannot parse the sources at all — which is what a TypeScript major does to
       # it — so a green step is not by itself evidence that anything was examined.
       - name: Import rules (dependency-cruiser)
+        if: steps.web-changes.outputs.run == 'true'
         run: |
           npm run depcruise 2>&1 | tee "$RUNNER_TEMP/depcruise.out"
           test "${PIPESTATUS[0]}" -eq 0
           grep -qE '\([1-9][0-9]* modules' "$RUNNER_TEMP/depcruise.out"
       - name: Build (type-check + bundle)
+        if: steps.web-changes.outputs.run == 'true'
         run: npm run build

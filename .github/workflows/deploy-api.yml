@@ -58,7 +58,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # Publish to a directory OUTSIDE the workspace, so the artifact cannot pick up the
       # repository. Deploying the repo would serve .cs sources and git history from wwwroot.
